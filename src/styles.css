@@ -44,7 +44,7 @@ button:focus-visible { outline: 2px solid #f0cc82; outline-offset: 2px; }
 .square-button:active { border-style: inset; transform: translateY(1px); }
 
 .world { position: absolute; inset: 61px 0 160px; overflow: hidden; background: #5f6950; }
-.world > img { width: 100%; height: 100%; object-fit: cover; object-position: center 50%; filter: saturate(.92) contrast(1.03) brightness(.86); transform: scale(1.055); }
+.world > img { width: 100%; height: 100%; object-fit: cover; object-position: center 48%; filter: saturate(.92) contrast(1.03) brightness(.86); transform: scale(1.66); }
 .world-vignette { position: absolute; inset: 0; background: radial-gradient(circle at 52% 48%, transparent 45%, rgba(20,13,24,.4) 100%); pointer-events: none; }
 .raid-marker { position: absolute; top: 12%; left: 68%; display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: rgba(35,22,35,.9); border: 1px solid #be6575; box-shadow: 0 4px 18px #0009; color: #e7b1ac; }
 .raid-marker div { display: grid; }
@@ -57,6 +57,10 @@ button:focus-visible { outline: 2px solid #f0cc82; outline-offset: 2px; }
 .battle-unit { position: absolute; z-index: 4; width: 31px; height: 31px; display: grid; place-items: center; border-radius: 50%; box-shadow: 0 3px 12px #000d; animation: battle-pulse 1.1s ease-in-out infinite alternate; }
 .battle-unit.friendly { color: #e0c582; background: #4b3860; border: 2px solid #a98cbd; }
 .battle-unit.enemy { color: #f0b3aa; background: #632d35; border: 2px solid #c76d75; animation-delay: -.45s; }
+.stress-mode .battle-unit { width: 12px; height: 12px; contain: strict; animation: none; box-shadow: 0 2px 4px #000b; }
+.stress-mode .battle-unit svg { width: 8px; height: 8px; }
+.map-feature { position: absolute; z-index: 2; transform: translate(-50%,-50%); width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; opacity: .72; filter: drop-shadow(0 2px 2px #000); pointer-events: none; }
+.map-feature.forest { color: #d0d19b; background: #354933b8; }.map-feature.field { color: #f0d584; background: #635534b8; }.map-feature.stone { color: #d2c8d3; background: #514c53c4; }
 @keyframes battle-pulse { from { transform: translateY(0) scale(.94); } to { transform: translateY(-4px) scale(1.04); } }
 .notice { position: absolute; z-index: 5; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 7px 15px; color: #e9d8bb; background: #211725e6; border: 1px solid #80698a; box-shadow: 0 4px 12px #0008; font-size: 12px; pointer-events: none; }
 
@@ -84,6 +88,10 @@ button:focus-visible { outline: 2px solid #f0cc82; outline-offset: 2px; }
   .resource-strip { gap: 11px; }.resource:nth-child(3) { display:none; }
   .chronicle { width: 218px; }.intel,.selection { width: 242px; }
   .building-tools { grid-template-columns: repeat(8,1fr); }.build-button:nth-child(n+9) { display:none; }
+}
+
+@media (max-height: 760px) {
+  .selection { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }

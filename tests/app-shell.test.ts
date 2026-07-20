@@ -40,4 +40,16 @@ describe('Openfront shell', () => {
     expect(wrapper.findAll('[data-testid="friendly-unit"]').length).toBeGreaterThan(0)
     expect(wrapper.findAll('[data-testid="enemy-unit"]').length).toBeGreaterThan(0)
   })
+
+  it('creates a new procedural valley and keeps a local save', async () => {
+    localStorage.clear()
+    const wrapper = mount(App)
+    const oldSeed = wrapper.get('[data-testid="seed"]').text()
+
+    await wrapper.get('[data-action="save"]').trigger('click')
+    expect(localStorage.getItem('openfront:autosave')).toContain('heather-17')
+
+    await wrapper.get('[data-action="new-world"]').trigger('click')
+    expect(wrapper.get('[data-testid="seed"]').text()).not.toBe(oldSeed)
+  })
 })

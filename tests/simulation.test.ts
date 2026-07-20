@@ -55,6 +55,21 @@ describe('settlement simulation', () => {
     expect(state.crises.some((crisis) => crisis.kind === 'famine')).toBe(true)
     expect(state.order).toBeLessThan(72)
   })
+
+  it('escalates low order into rebellion and low legitimacy into a coup', () => {
+    const state = createGame('politics')
+    state.order = 24
+    state.legitimacy = 19
+
+    advanceGame(state, 2)
+
+    expect(state.crises).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'rebellion' }),
+      expect.objectContaining({ kind: 'coup' }),
+    ]))
+    expect(state.events.some((event) => event.title === 'Бунт в посаде')).toBe(true)
+    expect(state.events.some((event) => event.title === 'Заговор знати')).toBe(true)
+  })
 })
 
 describe('dynamic threat director', () => {
@@ -80,6 +95,17 @@ describe('dynamic threat director', () => {
     expect(threat.status).toBe('disbanded')
     expect(state.events.at(-1)?.text).toContain('рассеялись')
     expect('nextWaveAt' in state).toBe(false)
+  })
+
+  it('lets an under-supplied external force disappear on its own', () => {
+    const state = createGame('short-campaign')
+    const threat = revealThreat(state, 'scouts', 28)
+    threat.supplies = 8
+
+    advanceGame(state)
+
+    expect(threat.status).toBe('disbanded')
+    expect(state.events.at(-1)?.title).toBe('Угроза миновала')
   })
 
   it('resolves visible combat through strength, defenses, and morale', () => {

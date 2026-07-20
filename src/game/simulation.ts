@@ -197,6 +197,16 @@ export function dismissThreat(state: GameState, threatId: number, reason: 'suppl
   state.events.push({ id: state.nextId++, day: state.day, title: 'Угроза миновала', text: `Вражеские отряды рассеялись ${cause}.`, tone: 'good' })
 }
 
+function escalateCrisis(state: GameState, kind: Crisis['kind'], title: string, text: string): void {
+  const crisis = state.crises.find((item) => item.kind === kind)
+  if (crisis) {
+    crisis.pressure = Math.min(100, crisis.pressure + 8)
+    return
+  }
+  state.crises.push({ id: state.nextId++, kind, pressure: 28 })
+  state.events.push({ id: state.nextId++, day: state.day, title, text, tone: 'danger' })
+}
+
 export function resolveRaid(
   state: GameState,
   threatId: number,
@@ -248,6 +258,13 @@ export function advanceGame(state: GameState, days = 1): void {
       }
     }
 
+    if (state.order < 30) {
+      escalateCrisis(state, 'rebellion', 'Бунт в посаде', 'Недовольные ремесленники возводят баррикады у рынка.')
+    }
+    if (state.legitimacy < 25) {
+      escalateCrisis(state, 'coup', 'Заговор знати', 'Часть бояр обсуждает смену правителя за закрытыми дверями.')
+    }
+
     for (const threat of state.threats) {
       const age = state.day - threat.formedDay
       if (threat.status === 'forming' && age >= 2) {
@@ -256,7 +273,10 @@ export function advanceGame(state: GameState, days = 1): void {
       } else if (threat.status === 'approaching' && age >= 5) {
         threat.status = 'raiding'
       }
-      if (threat.status !== 'disbanded') threat.supplies = Math.max(0, threat.supplies - 8)
+      if (threat.status !== 'disbanded') {
+        threat.supplies = Math.max(0, threat.supplies - 8)
+        if (threat.supplies === 0) dismissThreat(state, threat.id, 'supplies')
+      }
     }
 
     if (state.day > 90) {

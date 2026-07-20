@@ -3,12 +3,15 @@ import { computed, onUnmounted, reactive, ref } from 'vue'
 import {
   Castle,
   Coins,
+  Dices,
   Eye,
   FastForward,
   Hammer,
   House,
+  FolderOpen,
   Pause,
   Play,
+  Save,
   ScrollText,
   Shield,
   Swords,
@@ -25,6 +28,7 @@ import {
   resolveRaid,
   type BuildingKind,
 } from './game/simulation'
+import { decodeSave, encodeSave } from './game/persistence'
 
 const game = reactive(createGame('heather-17'))
 revealThreat(game, 'raiders', 85)
@@ -33,6 +37,10 @@ const selectedTool = ref<BuildingKind>('road')
 const speed = ref<0 | 1 | 4>(1)
 const notice = ref('Выберите постройку и укажите место на карте')
 const battleVisible = ref(false)
+const stressMode = new URLSearchParams(window.location.search).has('stress')
+const friendlyUnitCount = stressMode ? 150 : 4
+const enemyUnitCount = stressMode ? 150 : 5
+let worldCounter = 1
 
 const resources = computed(() => [
   { key: 'silver', label: 'Серебро', value: game.resources.silver.toLocaleString('ru-RU'), gain: '+4', icon: Coins },
@@ -88,6 +96,20 @@ function buildingStyle(x: number, y: number) {
   return { left: `${(x / 63) * 100}%`, top: `${(y / 63) * 100}%` }
 }
 
+function battleUnitStyle(index: number, side: 'friendly' | 'enemy') {
+  if (!stressMode) {
+    return side === 'friendly'
+      ? { left: `${48 + index * 2.2}%`, top: `${31 + (index % 2) * 4}%` }
+      : { left: `${62 + index * 2.4}%`, top: `${21 + (index % 2) * 4}%` }
+  }
+
+  const column = (index - 1) % 25
+  const row = Math.floor((index - 1) / 25)
+  return side === 'friendly'
+    ? { left: `${38 + column * 1.05}%`, top: `${27 + row * 2.45}%` }
+    : { left: `${58 + column * 1.05}%`, top: `${14 + row * 2.45}%` }
+}
+
 function defendCity() {
   if (!primaryThreat.value) {
     notice.value = 'Разведка не видит доступных целей'
@@ -100,6 +122,36 @@ function defendCity() {
     : `Посад прорван · потери ${result.cityLosses}`
 }
 
+function saveSettlement() {
+  localStorage.setItem('openfront:autosave', encodeSave(game))
+  notice.value = 'Поселение сохранено'
+}
+
+function loadSettlement() {
+  const saved = localStorage.getItem('openfront:autosave')
+  if (!saved) {
+    notice.value = 'Сохранение не найдено'
+    return
+  }
+  const result = decodeSave(saved)
+  if (!result.ok) {
+    notice.value = result.reason
+    return
+  }
+  Object.assign(game, result.state)
+  battleVisible.value = false
+  notice.value = 'Летопись восстановлена'
+}
+
+function newWorld() {
+  const next = createGame(`heather-${17 + worldCounter}`)
+  worldCounter += 1
+  Object.assign(game, next)
+  revealThreat(game, worldCounter % 2 === 0 ? 'scouts' : 'raiders', 34 + worldCounter * 7)
+  battleVisible.value = false
+  notice.value = `Открыта новая долина · ${game.map.seed}`
+}
+
 const timer = window.setInterval(() => {
   if (speed.value > 0) advanceGame(game, speed.value)
 }, 3500)
@@ -107,7 +159,7 @@ onUnmounted(() => window.clearInterval(timer))
 </script>
 
 <template>
-  <main class="game-shell" data-testid="game-shell">
+  <main :class="['game-shell', { 'stress-mode': stressMode }]" data-testid="game-shell">
     <header class="topbar game-frame">
       <div class="resource-strip">
         <div v-for="resource in resources" :key="resource.label" class="resource" :title="resource.label" :data-resource="resource.key">
@@ -117,9 +169,12 @@ onUnmounted(() => window.clearInterval(timer))
       </div>
       <div class="settlement-mark">
         <span class="crest"><Castle :size="27" :stroke-width="1.7" /></span>
-        <div><h1>Вересков Дол</h1><p>{{ game.season }} · Сумерки · {{ game.year }} год, {{ game.day }} день</p></div>
+        <div><h1>Вересков Дол</h1><p>{{ game.season }} · Сумерки · {{ game.year }} год, {{ game.day }} день · <span data-testid="seed">{{ game.map.seed }}</span></p></div>
       </div>
       <div class="time-controls" aria-label="Скорость времени">
+        <button class="square-button" data-action="new-world" @click="newWorld"><Dices :size="18" /><span class="sr-only">Новая долина</span></button>
+        <button class="square-button" data-action="save" @click="saveSettlement"><Save :size="18" /><span class="sr-only">Сохранить</span></button>
+        <button class="square-button" data-action="load" @click="loadSettlement"><FolderOpen :size="18" /><span class="sr-only">Загрузить</span></button>
         <span class="speed-label" data-testid="speed-label">{{ speed }}×</span>
         <button :class="['square-button', { active: speed === 0 }]" data-speed="0" @click="chooseSpeed(0)"><Pause :size="18" /><span class="sr-only">Пауза</span></button>
         <button :class="['square-button', { active: speed === 1 }]" data-speed="1" @click="chooseSpeed(1)"><Play :size="18" /><span class="sr-only">Обычная скорость</span></button>
@@ -130,6 +185,24 @@ onUnmounted(() => window.clearInterval(timer))
     <section class="world" aria-label="Карта поселения" data-testid="world" @click="buildAt">
       <img src="/assets/concepts/openfront-primary-screen.png" alt="Средневековый город Вересков Дол" />
       <div class="world-vignette"></div>
+      <div
+        v-for="(point, index) in game.map.forests.slice(0, 18)"
+        :key="`forest-${index}-${game.map.seed}`"
+        class="map-feature forest"
+        :style="buildingStyle(point.x, point.y)"
+      ><TreePine :size="15" /></div>
+      <div
+        v-for="(point, index) in game.map.fertileFields.slice(0, 10)"
+        :key="`field-${index}-${game.map.seed}`"
+        class="map-feature field"
+        :style="buildingStyle(point.x, point.y)"
+      ><Wheat :size="14" /></div>
+      <div
+        v-for="(point, index) in game.map.stoneDeposits.slice(0, 6)"
+        :key="`stone-${index}-${game.map.seed}`"
+        class="map-feature stone"
+        :style="buildingStyle(point.x, point.y)"
+      ><Hammer :size="13" /></div>
       <div v-if="primaryThreat" class="raid-marker">
         <Shield :size="20" />
         <div><strong>Северный дозор</strong><span>Всадники · примерно {{ primaryThreat.strength }}</span></div>
@@ -137,18 +210,18 @@ onUnmounted(() => window.clearInterval(timer))
       <div class="town-label"><span>Нижний посад</span><i>Порядок 72</i></div>
       <template v-if="battleVisible">
         <div
-          v-for="index in 4"
+          v-for="index in friendlyUnitCount"
           :key="`friendly-${index}`"
           class="battle-unit friendly"
           data-testid="friendly-unit"
-          :style="{ left: `${48 + index * 2.2}%`, top: `${31 + (index % 2) * 4}%` }"
+          :style="battleUnitStyle(index, 'friendly')"
         ><Shield :size="18" /></div>
         <div
-          v-for="index in 5"
+          v-for="index in enemyUnitCount"
           :key="`enemy-${index}`"
           class="battle-unit enemy"
           data-testid="enemy-unit"
-          :style="{ left: `${62 + index * 2.4}%`, top: `${21 + (index % 2) * 4}%` }"
+          :style="battleUnitStyle(index, 'enemy')"
         ><Swords :size="18" /></div>
       </template>
       <div
