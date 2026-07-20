@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, reactive, ref } from 'vue'
+import { computed, nextTick, onUnmounted, reactive, ref } from 'vue'
 import { Shield } from '@lucide/vue'
 import EdgeDrawer from './components/EdgeDrawer.vue'
 import GameWorld from './components/GameWorld.vue'
@@ -28,6 +28,7 @@ const activeDrawer = ref<Drawer | null>(null)
 const speed = ref<0 | 1 | 4>(1)
 const notice = ref('Выберите постройку и укажите место на карте')
 const battleVisible = ref(false)
+const gameWorld = ref<InstanceType<typeof GameWorld> | null>(null)
 const stressMode = new URLSearchParams(window.location.search).has('stress')
 let worldCounter = 1
 
@@ -83,7 +84,10 @@ function toggleDrawer(drawer: Drawer): void {
 }
 
 function saveSettlement(): void {
-  localStorage.setItem('openfront:autosave', encodeSave(game))
+  localStorage.setItem('openfront:autosave', encodeSave(game, {
+    presetId: byzantineMacedonian.id,
+    camera: gameWorld.value?.snapshotCamera() ?? { targetX: 32, targetZ: 32, zoom: 1, quarter: 0 },
+  }))
   notice.value = 'Княжество сохранено'
 }
 
@@ -101,6 +105,7 @@ function loadSettlement(): void {
   Object.assign(game, result.state)
   battleVisible.value = false
   notice.value = 'Летопись княжества восстановлена'
+  void nextTick(() => gameWorld.value?.restoreCamera(result.meta.camera))
 }
 
 function newWorld(): void {
@@ -122,6 +127,7 @@ onUnmounted(() => window.clearInterval(timer))
   <main :class="['game-shell', { 'stress-mode': stressMode }]" data-testid="game-shell">
     <section class="world" aria-label="Карта княжества" data-testid="world">
       <GameWorld
+        ref="gameWorld"
         :seed="game.map.seed"
         :buildings="game.buildings"
         :selected-tool="selectedTool"

@@ -146,6 +146,10 @@ export class WorldRenderer {
     return this.cameraController.snapshot()
   }
 
+  restoreCamera(snapshot: ReturnType<CameraController['snapshot']>): void {
+    this.cameraController.restore(snapshot)
+  }
+
   dispose(): void {
     cancelAnimationFrame(this.animationFrame)
     this.disposeWorld()

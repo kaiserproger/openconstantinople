@@ -134,6 +134,17 @@ function hidePreview(): void {
   world?.hidePreview()
 }
 
+function snapshotCamera(): CameraSnapshot {
+  return world?.cameraSnapshot() ?? { ...cameraState }
+}
+
+function restoreCamera(snapshot: CameraSnapshot): void {
+  world?.restoreCamera(snapshot)
+  Object.assign(cameraState, snapshot)
+}
+
+defineExpose({ snapshotCamera, restoreCamera })
+
 onMounted(() => {
   if (!canvas.value) return
   try {
