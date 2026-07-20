@@ -3,6 +3,7 @@ import {
   createGame,
   dismissThreat,
   placeBuilding,
+  placePath,
   resolveRaid,
   revealThreat,
 } from '../src/game/simulation'
@@ -25,6 +26,16 @@ describe('procedural valley', () => {
 })
 
 describe('settlement simulation', () => {
+  it('starts from a real, editable urban nucleus rather than a painted backdrop', () => {
+    const state = createGame('metropolis')
+    const occupied = new Set(state.buildings.map((building) => `${building.x}:${building.y}`))
+
+    expect(state.buildings.length).toBeGreaterThanOrEqual(28)
+    expect(occupied.size).toBe(state.buildings.length)
+    expect(state.buildings.filter((building) => building.kind === 'house').length).toBeGreaterThanOrEqual(8)
+    expect(state.buildings.filter((building) => building.kind === 'wall').length).toBeGreaterThanOrEqual(4)
+  })
+
   it('places a building and charges its cost once', () => {
     const state = createGame('building')
     const result = placeBuilding(state, 'house', { x: 18, y: 22 })
@@ -45,10 +56,30 @@ describe('settlement simulation', () => {
     expect(state.resources.wood).toBe(woodAfterFirst)
   })
 
+  it('places a dragged road atomically and charges only accepted cells', () => {
+    const state = createGame('road')
+    const roadsBefore = state.buildings.filter((building) => building.kind === 'road').length
+    const result = placePath(state, 'road', [{ x: 10, y: 10 }, { x: 11, y: 10 }, { x: 12, y: 10 }])
+
+    expect(result).toEqual({ ok: true, placed: 3 })
+    expect(state.buildings.filter((building) => building.kind === 'road')).toHaveLength(roadsBefore + 3)
+    expect(state.resources.wood).toBe(117)
+  })
+
+  it('does not mutate a path when one cell is occupied', () => {
+    const state = createGame('blocked-road')
+    const before = structuredClone(state)
+    const result = placePath(state, 'road', [{ x: 10, y: 10 }, { x: 32, y: 31 }])
+
+    expect(result).toEqual({ ok: false, reason: 'Здесь уже стоит постройка' })
+    expect(state).toEqual(before)
+  })
+
   it('turns shortage into famine and disorder instead of a random popup', () => {
     const state = createGame('famine')
     state.resources.food = 0
     state.people = 120
+    state.buildings.filter((building) => building.kind === 'farm').forEach((building) => { building.progress = 0 })
 
     advanceGame(state, 8)
 

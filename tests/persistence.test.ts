@@ -1,5 +1,5 @@
 import { createGame, revealThreat } from '../src/game/simulation'
-import { decodeSave, encodeSave } from '../src/game/persistence'
+import { decodeSave, encodeSave, encodeVersionOneFixture } from '../src/game/persistence'
 
 describe('versioned settlement saves', () => {
   it('round-trips the seed, tick, buildings, and living threats', () => {
@@ -21,6 +21,27 @@ describe('versioned settlement saves', () => {
     expect(decodeSave('{"version":1,"payload":"broken"}')).toEqual({
       ok: false,
       reason: 'Сохранение повреждено',
+    })
+  })
+
+  it('round-trips the active preset and orthographic camera', () => {
+    const payload = encodeSave(createGame('camera'), {
+      presetId: 'byzantine-macedonian',
+      camera: { targetX: 32, targetZ: 32, zoom: 1.25, quarter: 3 },
+    })
+
+    expect(decodeSave(payload)).toMatchObject({
+      ok: true,
+      meta: { presetId: 'byzantine-macedonian', camera: { zoom: 1.25, quarter: 3 } },
+    })
+  })
+
+  it('migrates version one saves to the Byzantine preset and default camera', () => {
+    const old = encodeVersionOneFixture(createGame('old'))
+
+    expect(decodeSave(old)).toMatchObject({
+      ok: true,
+      meta: { presetId: 'byzantine-macedonian', camera: { zoom: 1, quarter: 0 } },
     })
   })
 })

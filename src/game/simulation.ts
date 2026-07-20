@@ -132,6 +132,23 @@ function createMap(seed: string): ValleyMap {
 }
 
 export function createGame(seed: string): GameState {
+  const urbanNucleus: Building[] = [
+    ['townHall', 32, 31], ['granary', 42, 31], ['market', 32, 42], ['smithy', 41, 40],
+    ['house', 20, 22], ['house', 27, 20], ['house', 38, 20], ['house', 45, 23],
+    ['house', 20, 31], ['house', 45, 32], ['house', 20, 40], ['house', 26, 45],
+    ['house', 38, 46], ['house', 47, 42], ['farm', 51, 27], ['farm', 52, 36],
+    ['farm', 16, 47], ['lumberCamp', 13, 27], ['quarry', 51, 48], ['barracks', 18, 53],
+    ['watchtower', 14, 14], ['watchtower', 50, 14], ['watchtower', 14, 52], ['watchtower', 50, 52],
+    ['wall', 20, 13], ['wall', 30, 13], ['wall', 40, 13], ['wall', 20, 54],
+    ['wall', 30, 54], ['wall', 40, 54], ['road', 26, 38], ['road', 30, 38], ['road', 34, 38],
+  ].map(([kind, x, y], index) => ({
+    id: index + 1,
+    kind: kind as BuildingKind,
+    x: x as number,
+    y: y as number,
+    progress: 1,
+    health: 100,
+  }))
   return {
     tick: 0,
     day: 1,
@@ -143,22 +160,13 @@ export function createGame(seed: string): GameState {
     legitimacy: 66,
     resources: { food: 2845, wood: 120, stone: 96, silver: 92 },
     map: createMap(seed),
-    buildings: [
-      { id: 1, kind: 'townHall', x: 32, y: 31, progress: 1, health: 100 },
-      { id: 2, kind: 'granary', x: 37, y: 30, progress: 1, health: 100 },
-      { id: 3, kind: 'house', x: 29, y: 35, progress: 1, health: 100 },
-      { id: 4, kind: 'house', x: 36, y: 36, progress: 1, health: 100 },
-      { id: 5, kind: 'farm', x: 42, y: 36, progress: 1, health: 100 },
-      { id: 6, kind: 'lumberCamp', x: 24, y: 29, progress: 1, health: 100 },
-      { id: 7, kind: 'market', x: 33, y: 40, progress: 1, health: 100 },
-      { id: 8, kind: 'watchtower', x: 43, y: 24, progress: 1, health: 100 },
-    ],
+    buildings: urbanNucleus,
     threats: [],
     crises: [],
     events: [
-      { id: 9, day: 1, title: 'Новая летопись', text: 'Вересков Дол встречает осень.', tone: 'neutral' },
+      { id: 34, day: 1, title: 'Новая летопись', text: 'Порфирополис встречает осень.', tone: 'neutral' },
     ],
-    nextId: 10,
+    nextId: 35,
   }
 }
 
@@ -176,6 +184,45 @@ export function placeBuilding(state: GameState, kind: BuildingKind, point: Point
   state.buildings.push({ id: state.nextId++, kind, ...point, progress: kind === 'road' ? 1 : 0.15, health: 100 })
   state.events.push({ id: state.nextId++, day: state.day, title: 'Начато строительство', text: `Заложена новая постройка: ${kind}.`, tone: 'good' })
   return { ok: true }
+}
+
+export function placePath(
+  state: GameState,
+  kind: 'road' | 'wall',
+  points: Point[],
+): { ok: true; placed: number } | { ok: false; reason: string } {
+  const unique = [...new Map(points.map((point) => [`${point.x}:${point.y}`, point])).values()]
+  if (!unique.length) return { ok: false, reason: 'Путь не задан' }
+  if (unique.some((point) => point.x < 0 || point.x > 63 || point.y < 0 || point.y > 63)) {
+    return { ok: false, reason: 'Путь выходит за границы карты' }
+  }
+  if (unique.some((point) => state.buildings.some((building) => building.x === point.x && building.y === point.y))) {
+    return { ok: false, reason: 'Здесь уже стоит постройка' }
+  }
+  const cost = BUILD_COSTS[kind]
+  const total = {
+    wood: cost.wood * unique.length,
+    stone: cost.stone * unique.length,
+    silver: cost.silver * unique.length,
+  }
+  if (state.resources.wood < total.wood || state.resources.stone < total.stone || state.resources.silver < total.silver) {
+    return { ok: false, reason: 'Не хватает припасов' }
+  }
+
+  state.resources.wood -= total.wood
+  state.resources.stone -= total.stone
+  state.resources.silver -= total.silver
+  for (const point of unique) {
+    state.buildings.push({ id: state.nextId++, kind, ...point, progress: 1, health: 100 })
+  }
+  state.events.push({
+    id: state.nextId++,
+    day: state.day,
+    title: kind === 'road' ? 'Проложена улица' : 'Возведена линия стены',
+    text: `Завершено участков: ${unique.length}.`,
+    tone: 'good',
+  })
+  return { ok: true, placed: unique.length }
 }
 
 export function revealThreat(state: GameState, kind: Threat['kind'], strength: number): Threat {
