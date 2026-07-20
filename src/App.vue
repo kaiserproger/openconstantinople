@@ -32,7 +32,6 @@ import { decodeSave, encodeSave } from './game/persistence'
 
 const game = reactive(createGame('heather-17'))
 revealThreat(game, 'raiders', 85)
-const initialBuildingCount = game.buildings.length
 const selectedTool = ref<BuildingKind>('road')
 const speed = ref<0 | 1 | 4>(1)
 const notice = ref('Выберите постройку и укажите место на карте')
@@ -41,6 +40,21 @@ const stressMode = new URLSearchParams(window.location.search).has('stress')
 const friendlyUnitCount = stressMode ? 150 : 4
 const enemyUnitCount = stressMode ? 150 : 5
 let worldCounter = 1
+
+const buildingAssetPositions: Record<BuildingKind, string> = {
+  road: '0% 0%',
+  house: '33.333% 0%',
+  farm: '66.667% 0%',
+  lumberCamp: '100% 0%',
+  quarry: '0% 50%',
+  granary: '33.333% 50%',
+  market: '66.667% 50%',
+  smithy: '100% 50%',
+  barracks: '0% 100%',
+  watchtower: '33.333% 100%',
+  wall: '66.667% 100%',
+  townHall: '100% 100%',
+}
 
 const resources = computed(() => [
   { key: 'silver', label: 'Серебро', value: game.resources.silver.toLocaleString('ru-RU'), gain: '+4', icon: Coins },
@@ -73,7 +87,7 @@ const buildings: Array<{ label: string; kind: BuildingKind; icon: typeof House }
   { label: 'Ратуша', kind: 'townHall', icon: Castle },
 ]
 
-const placedBuildings = computed(() => game.buildings.slice(initialBuildingCount))
+const placedBuildings = computed(() => game.buildings)
 const primaryThreat = computed(() => game.threats.find((threat) => threat.status !== 'disbanded'))
 
 function chooseSpeed(value: 0 | 1 | 4) {
@@ -94,6 +108,14 @@ function buildAt(event: MouseEvent) {
 
 function buildingStyle(x: number, y: number) {
   return { left: `${(x / 63) * 100}%`, top: `${(y / 63) * 100}%` }
+}
+
+function placedBuildingStyle(kind: BuildingKind, x: number, y: number) {
+  return {
+    ...buildingStyle(x, y),
+    backgroundPosition: buildingAssetPositions[kind],
+    zIndex: 10 + y,
+  }
 }
 
 function battleUnitStyle(index: number, side: 'friendly' | 'enemy') {
@@ -183,26 +205,29 @@ onUnmounted(() => window.clearInterval(timer))
     </header>
 
     <section class="world" aria-label="Карта поселения" data-testid="world" @click="buildAt">
-      <img src="/assets/concepts/openfront-primary-screen.png" alt="Средневековый город Вересков Дол" />
+      <img :src="'/assets/terrain/empty-valley.png'" alt="Пустая средневековая долина Вересков Дол" />
       <div class="world-vignette"></div>
       <div
-        v-for="(point, index) in game.map.forests.slice(0, 18)"
+        v-for="(point, index) in game.map.forests.slice(0, 8)"
         :key="`forest-${index}-${game.map.seed}`"
-        class="map-feature forest"
+        class="resource-zone forest"
+        aria-label="Лесные угодья"
         :style="buildingStyle(point.x, point.y)"
-      ><TreePine :size="15" /></div>
+      ></div>
       <div
-        v-for="(point, index) in game.map.fertileFields.slice(0, 10)"
+        v-for="(point, index) in game.map.fertileFields.slice(0, 5)"
         :key="`field-${index}-${game.map.seed}`"
-        class="map-feature field"
+        class="resource-zone field"
+        aria-label="Плодородная земля"
         :style="buildingStyle(point.x, point.y)"
-      ><Wheat :size="14" /></div>
+      ></div>
       <div
-        v-for="(point, index) in game.map.stoneDeposits.slice(0, 6)"
+        v-for="(point, index) in game.map.stoneDeposits.slice(0, 3)"
         :key="`stone-${index}-${game.map.seed}`"
-        class="map-feature stone"
+        class="resource-zone stone"
+        aria-label="Каменная жила"
         :style="buildingStyle(point.x, point.y)"
-      ><Hammer :size="13" /></div>
+      ></div>
       <div v-if="primaryThreat" class="raid-marker">
         <Shield :size="20" />
         <div><strong>Северный дозор</strong><span>Всадники · примерно {{ primaryThreat.strength }}</span></div>
@@ -215,23 +240,23 @@ onUnmounted(() => window.clearInterval(timer))
           class="battle-unit friendly"
           data-testid="friendly-unit"
           :style="battleUnitStyle(index, 'friendly')"
-        ><Shield :size="18" /></div>
+        ></div>
         <div
           v-for="index in enemyUnitCount"
           :key="`enemy-${index}`"
           class="battle-unit enemy"
           data-testid="enemy-unit"
           :style="battleUnitStyle(index, 'enemy')"
-        ><Swords :size="18" /></div>
+        ></div>
       </template>
       <div
         v-for="building in placedBuildings"
         :key="building.id"
-        class="placed-building"
+        :class="['placed-building', `asset-${building.kind}`]"
         data-testid="placed-building"
-        :style="buildingStyle(building.x, building.y)"
+        :data-asset="building.kind"
+        :style="placedBuildingStyle(building.kind, building.x, building.y)"
       >
-        <component :is="buildings.find((item) => item.kind === building.kind)?.icon || House" :size="27" />
         <span>{{ buildings.find((item) => item.kind === building.kind)?.label }}</span>
       </div>
       <div class="notice" data-testid="notice">{{ notice }}</div>

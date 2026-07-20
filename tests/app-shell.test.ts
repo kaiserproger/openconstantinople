@@ -11,13 +11,17 @@ describe('Openfront shell', () => {
 
   it('selects a building tool and places it on the world', async () => {
     const wrapper = mount(App)
+    expect(wrapper.findAll('[data-testid="placed-building"]')).toHaveLength(8)
+    expect(wrapper.get('[data-testid="world"] img').attributes('src')).toContain('empty-valley')
     const house = wrapper.get('[data-kind="house"]')
     await house.trigger('click')
     expect(house.classes()).toContain('active')
 
     await wrapper.get('[data-testid="world"]').trigger('click', { clientX: 560, clientY: 360 })
 
-    expect(wrapper.findAll('[data-testid="placed-building"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-testid="placed-building"]')).toHaveLength(9)
+    expect(wrapper.findAll('[data-testid="placed-building"] svg')).toHaveLength(0)
+    expect(wrapper.findAll('[data-testid="placed-building"]')[8].attributes('data-asset')).toBe('house')
     expect(wrapper.get('[data-resource="wood"]').text()).toContain('112')
   })
 
@@ -39,6 +43,8 @@ describe('Openfront shell', () => {
     expect(wrapper.get('[data-testid="notice"]').text()).toContain('Налёт отбит')
     expect(wrapper.findAll('[data-testid="friendly-unit"]').length).toBeGreaterThan(0)
     expect(wrapper.findAll('[data-testid="enemy-unit"]').length).toBeGreaterThan(0)
+    expect(wrapper.findAll('[data-testid="friendly-unit"] svg')).toHaveLength(0)
+    expect(wrapper.findAll('[data-testid="enemy-unit"] svg')).toHaveLength(0)
   })
 
   it('creates a new procedural valley and keeps a local save', async () => {

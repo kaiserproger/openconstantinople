@@ -8,17 +8,18 @@ test('builds, saves, reloads, and fights on the live map', async ({ page }) => {
 
   await page.goto('/')
   const seedBefore = await page.getByTestId('seed').textContent()
+  await expect(page.getByTestId('placed-building')).toHaveCount(8)
 
   await page.locator('[data-kind="house"]').click()
   await page.getByTestId('world').click({ position: { x: 780, y: 410 } })
-  await expect(page.getByTestId('placed-building')).toHaveCount(1)
+  await expect(page.getByTestId('placed-building')).toHaveCount(9)
 
   await page.locator('[data-action="save"]').click()
   await expect(page.getByTestId('notice')).toContainText('Поселение сохранено')
   await page.locator('[data-action="new-world"]').click()
   await expect(page.getByTestId('seed')).not.toHaveText(seedBefore ?? '')
   await page.locator('[data-action="load"]').click()
-  await expect(page.getByTestId('placed-building')).toHaveCount(1)
+  await expect(page.getByTestId('placed-building')).toHaveCount(9)
 
   await page.locator('[data-action="attack"]').click()
   await expect(page.getByTestId('friendly-unit').first()).toBeVisible()

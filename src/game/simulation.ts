@@ -147,13 +147,18 @@ export function createGame(seed: string): GameState {
       { id: 1, kind: 'townHall', x: 32, y: 31, progress: 1, health: 100 },
       { id: 2, kind: 'granary', x: 37, y: 30, progress: 1, health: 100 },
       { id: 3, kind: 'house', x: 29, y: 35, progress: 1, health: 100 },
+      { id: 4, kind: 'house', x: 36, y: 36, progress: 1, health: 100 },
+      { id: 5, kind: 'farm', x: 42, y: 36, progress: 1, health: 100 },
+      { id: 6, kind: 'lumberCamp', x: 24, y: 29, progress: 1, health: 100 },
+      { id: 7, kind: 'market', x: 33, y: 40, progress: 1, health: 100 },
+      { id: 8, kind: 'watchtower', x: 43, y: 24, progress: 1, health: 100 },
     ],
     threats: [],
     crises: [],
     events: [
-      { id: 4, day: 1, title: 'Новая летопись', text: 'Вересков Дол встречает осень.', tone: 'neutral' },
+      { id: 9, day: 1, title: 'Новая летопись', text: 'Вересков Дол встречает осень.', tone: 'neutral' },
     ],
-    nextId: 5,
+    nextId: 10,
   }
 }
 

@@ -25,9 +25,10 @@ The accepted concept is `docs/design/openfront-primary-screen.png`; the latest i
 4. Controls: all actionable controls use code-native beveled 1990s PC-game styling and Lucide SVG icons; there are no emoji or Unicode icon substitutes.
 5. World: the generated medieval town remains the visual hero; aggressive center cropping prevents the concept's embedded English interface from leaking behind the live UI.
 6. Responsiveness: at 1280×720, low-priority construction tools and the selected-building panel collapse to keep the map and raid controls usable.
+7. Scene assets: the map now uses a dedicated empty valley, twelve transparent building sprites, and separate militia/raider sprites. SVG remains confined to interface controls.
 
 ## Intentional prototype deviations
 
-- The first slice uses the accepted raster city concept rather than a complete individual sprite atlas.
+- The terrain is still one raster field rather than a procedural tile renderer, while every visible structure and combatant is now an independent scene object.
 - The framework-free simulation runs on the main thread; PixiJS and Worker extraction remain the next renderer milestone.
 - Saves use a checksummed, versioned `localStorage` envelope rather than IndexedDB.
