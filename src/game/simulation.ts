@@ -132,6 +132,23 @@ function createMap(seed: string): ValleyMap {
 }
 
 export function createGame(seed: string): GameState {
+  const urbanNucleus: Building[] = [
+    ['townHall', 32, 31], ['granary', 42, 31], ['market', 32, 42], ['smithy', 41, 40],
+    ['house', 20, 22], ['house', 27, 20], ['house', 38, 20], ['house', 45, 23],
+    ['house', 20, 31], ['house', 45, 32], ['house', 20, 40], ['house', 26, 45],
+    ['house', 38, 46], ['house', 47, 42], ['farm', 51, 27], ['farm', 52, 36],
+    ['farm', 16, 47], ['lumberCamp', 13, 27], ['quarry', 51, 48], ['barracks', 18, 53],
+    ['watchtower', 14, 14], ['watchtower', 50, 14], ['watchtower', 14, 52], ['watchtower', 50, 52],
+    ['wall', 20, 13], ['wall', 30, 13], ['wall', 40, 13], ['wall', 20, 54],
+    ['wall', 30, 54], ['wall', 40, 54], ['road', 26, 38], ['road', 30, 38], ['road', 34, 38],
+  ].map(([kind, x, y], index) => ({
+    id: index + 1,
+    kind: kind as BuildingKind,
+    x: x as number,
+    y: y as number,
+    progress: 1,
+    health: 100,
+  }))
   return {
     tick: 0,
     day: 1,
@@ -143,22 +160,13 @@ export function createGame(seed: string): GameState {
     legitimacy: 66,
     resources: { food: 2845, wood: 120, stone: 96, silver: 92 },
     map: createMap(seed),
-    buildings: [
-      { id: 1, kind: 'townHall', x: 32, y: 31, progress: 1, health: 100 },
-      { id: 2, kind: 'granary', x: 37, y: 30, progress: 1, health: 100 },
-      { id: 3, kind: 'house', x: 29, y: 35, progress: 1, health: 100 },
-      { id: 4, kind: 'house', x: 36, y: 36, progress: 1, health: 100 },
-      { id: 5, kind: 'farm', x: 42, y: 36, progress: 1, health: 100 },
-      { id: 6, kind: 'lumberCamp', x: 24, y: 29, progress: 1, health: 100 },
-      { id: 7, kind: 'market', x: 33, y: 40, progress: 1, health: 100 },
-      { id: 8, kind: 'watchtower', x: 43, y: 24, progress: 1, health: 100 },
-    ],
+    buildings: urbanNucleus,
     threats: [],
     crises: [],
     events: [
-      { id: 9, day: 1, title: 'Новая летопись', text: 'Вересков Дол встречает осень.', tone: 'neutral' },
+      { id: 34, day: 1, title: 'Новая летопись', text: 'Порфирополис встречает осень.', tone: 'neutral' },
     ],
-    nextId: 10,
+    nextId: 35,
   }
 }
 

@@ -69,4 +69,16 @@ describe('Openfront shell', () => {
     await wrapper.get('[data-action="new-world"]').trigger('click')
     expect(wrapper.get('[data-testid="seed"]').text()).not.toBe(oldSeed)
   })
+
+  it('offers an in-place recovery when the WebGL context is lost', async () => {
+    const wrapper = mount(App)
+    const canvas = wrapper.get('[data-testid="voxel-world"]')
+    const event = new Event('webglcontextlost', { cancelable: true })
+
+    canvas.element.dispatchEvent(event)
+    await wrapper.vm.$nextTick()
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(wrapper.get('[data-testid="renderer-recovery"]').text()).toContain('Рендер мира приостановлен')
+  })
 })

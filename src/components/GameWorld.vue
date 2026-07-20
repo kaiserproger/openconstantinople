@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { Building, BuildingKind, Point } from '../game/simulation'
 import type { CameraSnapshot } from '../renderer/CameraController'
-import { WorldRenderer } from '../renderer/WorldRenderer'
+import type { WorldRenderer as WorldRendererType } from '../renderer/WorldRenderer'
 
 const props = defineProps<{
   seed: string
@@ -19,8 +19,10 @@ const emit = defineEmits<{
   cameraChange: [snapshot: CameraSnapshot]
 }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
-let world: WorldRenderer | null = null
+const rendererLost = ref(false)
+let world: WorldRendererType | null = null
 let resizeObserver: ResizeObserver | null = null
+let disposed = false
 const cameraState = reactive<CameraSnapshot>({ targetX: 32, targetZ: 32, zoom: 1, quarter: 0 })
 let pointerStart: { clientX: number; clientY: number; point: Point } | null = null
 let pointerLast: Point | null = null
@@ -143,13 +145,31 @@ function restoreCamera(snapshot: CameraSnapshot): void {
   Object.assign(cameraState, snapshot)
 }
 
+function contextLost(event: Event): void {
+  event.preventDefault()
+  rendererLost.value = true
+  world?.pause()
+}
+
+function contextRestored(): void {
+  world?.recover()
+  rendererLost.value = false
+}
+
+function recoverRenderer(): void {
+  if (world) world.requestRecovery()
+  else rendererLost.value = false
+}
+
 defineExpose({ snapshotCamera, restoreCamera })
 
-onMounted(() => {
+onMounted(async () => {
   if (!canvas.value) return
   try {
     const hasWebGL = Boolean(canvas.value.getContext('webgl2') || canvas.value.getContext('webgl'))
     if (hasWebGL) {
+      const { WorldRenderer } = await import('../renderer/WorldRenderer')
+      if (!canvas.value || disposed) return
       world = new WorldRenderer(canvas.value)
       syncWorld()
       if (typeof ResizeObserver !== 'undefined') {
@@ -161,13 +181,18 @@ onMounted(() => {
     console.warn('Voxel renderer unavailable; interaction fallback remains active.', error)
   }
   window.addEventListener('keydown', keyDown)
+  canvas.value.addEventListener('webglcontextlost', contextLost)
+  canvas.value.addEventListener('webglcontextrestored', contextRestored)
 })
 
 watch(() => [props.seed, props.buildings.length, props.battleVisible, props.stressMode], syncWorld)
 
 onBeforeUnmount(() => {
+  disposed = true
   resizeObserver?.disconnect()
   window.removeEventListener('keydown', keyDown)
+  canvas.value?.removeEventListener('webglcontextlost', contextLost)
+  canvas.value?.removeEventListener('webglcontextrestored', contextRestored)
   world?.dispose()
 })
 </script>
@@ -193,4 +218,8 @@ onBeforeUnmount(() => {
     :data-quarter="cameraState.quarter"
     :data-zoom="cameraState.zoom"
   >Положение изометрической камеры</span>
+  <div v-if="rendererLost" class="renderer-recovery" data-testid="renderer-recovery" role="alert">
+    <strong>Рендер мира приостановлен</strong>
+    <button @click="recoverRenderer">Восстановить</button>
+  </div>
 </template>

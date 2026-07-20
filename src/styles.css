@@ -56,6 +56,9 @@ button:focus-visible { outline: 2px solid #f0cf7c; outline-offset: 2px; }
 .town-label span { font: 700 20px 'Alegreya', Georgia, serif; letter-spacing: .04em; }
 .town-label i { font-style: normal; font-size: 10px; color: #ddcfb3; }
 .notice { position: absolute; z-index: 15; left: 50%; bottom: 142px; transform: translateX(-50%); min-width: 240px; padding: 6px 12px; text-align: center; color: #eadbbd; background: rgba(31,16,40,.92); border: 1px solid #8c6f96; box-shadow: 0 4px 12px #0008; font-size: 11px; pointer-events: none; }
+.renderer-recovery { position: absolute; z-index: 30; inset: 50% auto auto 50%; transform: translate(-50%,-50%); display: grid; gap: 12px; min-width: 280px; padding: 18px; text-align: center; color: var(--marble); background: var(--porphyry); border: 1px solid var(--gold); box-shadow: 0 12px 40px #000b; }
+.renderer-recovery strong { font: 600 16px 'Alegreya', serif; }
+.renderer-recovery button { height: 32px; color: var(--marble); background: #4c3158; border: 2px outset #92779d; }
 
 .mode-dock { position: absolute; z-index: 20; left: 50%; bottom: 10px; transform: translateX(-50%); width: min(950px, calc(100vw - 28px)); height: 122px; display: grid; grid-template-columns: 270px 1fr; }
 .mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 8px; border-right: 1px solid rgba(211,170,85,.35); }

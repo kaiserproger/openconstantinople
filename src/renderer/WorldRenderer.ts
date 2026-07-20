@@ -55,21 +55,22 @@ export class WorldRenderer {
   private battleVisible = false
   private stressMode = false
   private visibleUnits = 0
+  private paused = false
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' })
-    this.renderer.setClearColor(0x8f805f, 1)
+    this.renderer.setClearColor(0x4b3d4f, 1)
     this.renderer.shadowMap.enabled = false
     this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.08
-    this.scene.background = new THREE.Color(0x8d805f)
-    this.scene.fog = new THREE.FogExp2(0xa99a75, 0.011)
+    this.scene.background = new THREE.Color(0x4b3d4f)
+    this.scene.fog = new THREE.FogExp2(0x75677a, 0.0022)
 
-    const hemisphere = new THREE.HemisphereLight(0xffe9c3, 0x30243c, 2.2)
+    const hemisphere = new THREE.HemisphereLight(0xffecd0, 0x281a34, 1.45)
     this.scene.add(hemisphere)
-    const sun = new THREE.DirectionalLight(0xffd59b, 3.7)
+    const sun = new THREE.DirectionalLight(0xffd3a0, 4.8)
     sun.position.set(-32, 70, -24)
     sun.castShadow = true
     sun.shadow.mapSize.set(1024, 1024)
@@ -161,6 +162,20 @@ export class WorldRenderer {
     this.invalidate()
   }
 
+  pause(): void {
+    this.paused = true
+  }
+
+  requestRecovery(): void {
+    this.renderer.forceContextRestore()
+  }
+
+  recover(): void {
+    this.paused = false
+    this.rebuild()
+    this.invalidate()
+  }
+
   dispose(): void {
     cancelAnimationFrame(this.animationFrame)
     this.disposeWorld()
@@ -180,10 +195,10 @@ export class WorldRenderer {
     if (this.battleVisible) {
       const count = this.stressMode ? 150 : 18
       for (let index = 0; index < count; index += 1) {
-        const column = index % 25
-        const row = Math.floor(index / 25)
-        batch.add(generateUnitModel(index % 5 === 0 ? 'retinue' : 'militia', 'friendly', this.stressMode), new THREE.Vector3(34 + column * 0.58, 1.5, 24 + row * 0.62))
-        batch.add(generateUnitModel('raider', 'enemy', this.stressMode), new THREE.Vector3(47 + column * 0.58, 1.5, 16 + row * 0.62))
+        const column = index % 20
+        const row = Math.floor(index / 20)
+        batch.add(generateUnitModel(index % 5 === 0 ? 'retinue' : 'militia', 'friendly'), new THREE.Vector3(34 + column * 0.78, 1.5, 25 + row * 0.8))
+        batch.add(generateUnitModel('raider', 'enemy'), new THREE.Vector3(47 + column * 0.78, 1.5, 14 + row * 0.8))
       }
       this.visibleUnits = count * 2
     } else {
@@ -208,7 +223,7 @@ export class WorldRenderer {
 
   private animate = (): void => {
     this.animationFrame = requestAnimationFrame(this.animate)
-    if (this.needsRender) {
+    if (this.needsRender && !this.paused) {
       this.renderer.render(this.scene, this.camera)
       this.needsRender = false
     }

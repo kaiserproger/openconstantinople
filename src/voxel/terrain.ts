@@ -29,8 +29,8 @@ export function generateTerrain(seed: string, size = 64): TerrainSnapshot {
       const wave = Math.sin((x + 7) * 0.23) + Math.cos((z - 3) * 0.19) + Math.sin((x + z) * 0.11)
       const height = inCenter ? Math.max(1, Math.min(2, Math.round(1.5 + wave * 0.12))) : Math.max(0, Math.round(2 + wave * 0.72))
       const water = waterOnWest
-        ? x < 4 + Math.round(Math.sin(z * 0.22) * 1.5)
-        : z < 4 + Math.round(Math.sin(x * 0.22) * 1.5)
+        ? x < 8 + Math.round(Math.sin(z * 0.22) * 2)
+        : z < 8 + Math.round(Math.sin(x * 0.22) * 2)
       const roll = random()
       const biome: TerrainBiome = water
         ? 'water'
