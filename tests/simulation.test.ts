@@ -3,6 +3,7 @@ import {
   createGame,
   dismissThreat,
   placeBuilding,
+  placePath,
   resolveRaid,
   revealThreat,
 } from '../src/game/simulation'
@@ -43,6 +44,24 @@ describe('settlement simulation', () => {
 
     expect(result).toEqual({ ok: false, reason: 'Здесь уже стоит постройка' })
     expect(state.resources.wood).toBe(woodAfterFirst)
+  })
+
+  it('places a dragged road atomically and charges only accepted cells', () => {
+    const state = createGame('road')
+    const result = placePath(state, 'road', [{ x: 10, y: 10 }, { x: 11, y: 10 }, { x: 12, y: 10 }])
+
+    expect(result).toEqual({ ok: true, placed: 3 })
+    expect(state.buildings.filter((building) => building.kind === 'road')).toHaveLength(3)
+    expect(state.resources.wood).toBe(117)
+  })
+
+  it('does not mutate a path when one cell is occupied', () => {
+    const state = createGame('blocked-road')
+    const before = structuredClone(state)
+    const result = placePath(state, 'road', [{ x: 10, y: 10 }, { x: 32, y: 31 }])
+
+    expect(result).toEqual({ ok: false, reason: 'Здесь уже стоит постройка' })
+    expect(state).toEqual(before)
   })
 
   it('turns shortage into famine and disorder instead of a random popup', () => {

@@ -1,89 +1,72 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref } from 'vue'
-import {
-  Castle,
-  Coins,
-  Dices,
-  Eye,
-  FastForward,
-  Hammer,
-  House,
-  FolderOpen,
-  Pause,
-  Play,
-  Save,
-  ScrollText,
-  Shield,
-  Swords,
-  TreePine,
-  Users,
-  Warehouse,
-  Wheat,
-} from '@lucide/vue'
+import { Shield } from '@lucide/vue'
+import EdgeDrawer from './components/EdgeDrawer.vue'
+import GameWorld from './components/GameWorld.vue'
+import ModeBar from './components/ModeBar.vue'
+import TopHud from './components/TopHud.vue'
 import {
   advanceGame,
   createGame,
   placeBuilding,
+  placePath,
   revealThreat,
   resolveRaid,
   type BuildingKind,
 } from './game/simulation'
 import { decodeSave, encodeSave } from './game/persistence'
-import GameWorld from './components/GameWorld.vue'
+import { byzantineMacedonian } from './presets'
+
+type Mode = 'streets' | 'quarters' | 'production' | 'defense'
+type Drawer = 'chronicle' | 'intel'
 
 const game = reactive(createGame('heather-17'))
 revealThreat(game, 'raiders', 85)
-const selectedTool = ref<BuildingKind>('road')
+const selectedTool = ref<BuildingKind | null>('road')
+const mode = ref<Mode>('quarters')
+const activeDrawer = ref<Drawer | null>(null)
 const speed = ref<0 | 1 | 4>(1)
 const notice = ref('Выберите постройку и укажите место на карте')
 const battleVisible = ref(false)
 const stressMode = new URLSearchParams(window.location.search).has('stress')
 let worldCounter = 1
 
-const resources = computed(() => [
-  { key: 'silver', label: 'Серебро', value: game.resources.silver.toLocaleString('ru-RU'), gain: '+4', icon: Coins },
-  { key: 'wood', label: 'Древесина', value: game.resources.wood.toLocaleString('ru-RU'), gain: '+8', icon: TreePine },
-  { key: 'stone', label: 'Камень', value: game.resources.stone.toLocaleString('ru-RU'), gain: '+3', icon: Castle },
-  { key: 'food', label: 'Пища', value: game.resources.food.toLocaleString('ru-RU'), gain: '−12', icon: Wheat },
-  { key: 'people', label: 'Жители', value: `${game.people} / ${game.capacity}`, gain: '+1', icon: Users },
-])
-
-const chronicle = [
-  ['Налётчики замечены', 'Враги появились к северу от долины.', '17 день', Shield],
-  ['Башня завершена', 'Северная башня приступила к дозору.', '16 день', Castle],
-  ['Торговля завершена', 'Купцы из Железного брода отбыли.', '15 день', Coins],
-  ['Ополчение обучено', 'Восемь ратников вошли в гарнизон.', '14 день', Shield],
-  ['Урожай собран', 'Поля принесли 612 мер зерна.', '13 день', Wheat],
-]
-
-const buildings: Array<{ label: string; kind: BuildingKind; icon: typeof House }> = [
-  { label: 'Дорога', kind: 'road', icon: TreePine },
-  { label: 'Дом', kind: 'house', icon: House },
-  { label: 'Ферма', kind: 'farm', icon: Wheat },
-  { label: 'Лесопилка', kind: 'lumberCamp', icon: TreePine },
-  { label: 'Каменоломня', kind: 'quarry', icon: Hammer },
-  { label: 'Амбар', kind: 'granary', icon: Warehouse },
-  { label: 'Рынок', kind: 'market', icon: Coins },
-  { label: 'Кузница', kind: 'smithy', icon: Hammer },
-  { label: 'Казарма', kind: 'barracks', icon: Shield },
-  { label: 'Башня', kind: 'watchtower', icon: Castle },
-  { label: 'Стена', kind: 'wall', icon: Shield },
-  { label: 'Ратуша', kind: 'townHall', icon: Castle },
-]
-
 const primaryThreat = computed(() => game.threats.find((threat) => threat.status !== 'disbanded'))
+const topResources = computed(() => ({
+  ...game.resources,
+  people: game.people,
+  capacity: game.capacity,
+}))
 
-function chooseSpeed(value: 0 | 1 | 4) {
+function chooseSpeed(value: 0 | 1 | 4): void {
   speed.value = value
   notice.value = value === 0 ? 'Время остановлено' : `Скорость времени: ${value}×`
 }
 
-function buildAt(point: { x: number; y: number }) {
-  const result = placeBuilding(game, selectedTool.value, point)
-  notice.value = result.ok ? `${buildings.find((item) => item.kind === selectedTool.value)?.label} заложена` : result.reason
+function chooseMode(value: Mode): void {
+  mode.value = value
+  selectedTool.value = null
 }
 
-function defendCity() {
+function chooseTool(kind: BuildingKind): void {
+  selectedTool.value = kind
+  notice.value = `${byzantineMacedonian.buildings[kind]} · выберите место`
+}
+
+function buildAt(point: { x: number; y: number }): void {
+  if (!selectedTool.value) return
+  const kind = selectedTool.value
+  const result = placeBuilding(game, kind, point)
+  notice.value = result.ok ? `${byzantineMacedonian.buildings[kind]} заложена` : result.reason
+}
+
+function buildPath(points: Array<{ x: number; y: number }>): void {
+  if (selectedTool.value !== 'road' && selectedTool.value !== 'wall') return
+  const result = placePath(game, selectedTool.value, points)
+  notice.value = result.ok ? `Завершено участков: ${result.placed}` : result.reason
+}
+
+function defendCity(): void {
   if (!primaryThreat.value) {
     notice.value = 'Разведка не видит доступных целей'
     return
@@ -95,12 +78,16 @@ function defendCity() {
     : `Посад прорван · потери ${result.cityLosses}`
 }
 
-function saveSettlement() {
-  localStorage.setItem('openfront:autosave', encodeSave(game))
-  notice.value = 'Поселение сохранено'
+function toggleDrawer(drawer: Drawer): void {
+  activeDrawer.value = activeDrawer.value === drawer ? null : drawer
 }
 
-function loadSettlement() {
+function saveSettlement(): void {
+  localStorage.setItem('openfront:autosave', encodeSave(game))
+  notice.value = 'Княжество сохранено'
+}
+
+function loadSettlement(): void {
   const saved = localStorage.getItem('openfront:autosave')
   if (!saved) {
     notice.value = 'Сохранение не найдено'
@@ -113,16 +100,16 @@ function loadSettlement() {
   }
   Object.assign(game, result.state)
   battleVisible.value = false
-  notice.value = 'Летопись восстановлена'
+  notice.value = 'Летопись княжества восстановлена'
 }
 
-function newWorld() {
-  const next = createGame(`heather-${17 + worldCounter}`)
+function newWorld(): void {
+  const next = createGame(`porphyry-${17 + worldCounter}`)
   worldCounter += 1
   Object.assign(game, next)
   revealThreat(game, worldCounter % 2 === 0 ? 'scouts' : 'raiders', 34 + worldCounter * 7)
   battleVisible.value = false
-  notice.value = `Открыта новая долина · ${game.map.seed}`
+  notice.value = `Открыта новая фема · ${game.map.seed}`
 }
 
 const timer = window.setInterval(() => {
@@ -133,29 +120,7 @@ onUnmounted(() => window.clearInterval(timer))
 
 <template>
   <main :class="['game-shell', { 'stress-mode': stressMode }]" data-testid="game-shell">
-    <header class="topbar game-frame">
-      <div class="resource-strip">
-        <div v-for="resource in resources" :key="resource.label" class="resource" :title="resource.label" :data-resource="resource.key">
-          <component :is="resource.icon" :size="20" :stroke-width="1.8" aria-hidden="true" />
-          <div><strong>{{ resource.value }}</strong><span>{{ resource.gain }}</span></div>
-        </div>
-      </div>
-      <div class="settlement-mark">
-        <span class="crest"><Castle :size="27" :stroke-width="1.7" /></span>
-        <div><h1>Вересков Дол</h1><p>{{ game.season }} · Сумерки · {{ game.year }} год, {{ game.day }} день · <span data-testid="seed">{{ game.map.seed }}</span></p></div>
-      </div>
-      <div class="time-controls" aria-label="Скорость времени">
-        <button class="square-button" data-action="new-world" @click="newWorld"><Dices :size="18" /><span class="sr-only">Новая долина</span></button>
-        <button class="square-button" data-action="save" @click="saveSettlement"><Save :size="18" /><span class="sr-only">Сохранить</span></button>
-        <button class="square-button" data-action="load" @click="loadSettlement"><FolderOpen :size="18" /><span class="sr-only">Загрузить</span></button>
-        <span class="speed-label" data-testid="speed-label">{{ speed }}×</span>
-        <button :class="['square-button', { active: speed === 0 }]" data-speed="0" @click="chooseSpeed(0)"><Pause :size="18" /><span class="sr-only">Пауза</span></button>
-        <button :class="['square-button', { active: speed === 1 }]" data-speed="1" @click="chooseSpeed(1)"><Play :size="18" /><span class="sr-only">Обычная скорость</span></button>
-        <button :class="['square-button', { active: speed === 4 }]" data-speed="4" @click="chooseSpeed(4)"><FastForward :size="18" /><span class="sr-only">Быстро</span></button>
-      </div>
-    </header>
-
-    <section class="world" aria-label="Карта поселения" data-testid="world">
+    <section class="world" aria-label="Карта княжества" data-testid="world">
       <GameWorld
         :seed="game.map.seed"
         :buildings="game.buildings"
@@ -163,71 +128,53 @@ onUnmounted(() => window.clearInterval(timer))
         :battle-visible="battleVisible"
         :stress-mode="stressMode"
         @build="buildAt"
+        @build-path="buildPath"
+        @cancel="selectedTool = null; notice = 'Строительство отменено'"
       />
       <div class="world-vignette"></div>
       <div v-if="primaryThreat" class="raid-marker">
-        <Shield :size="20" />
-        <div><strong>Северный дозор</strong><span>Всадники · примерно {{ primaryThreat.strength }}</span></div>
+        <Shield :size="18" />
+        <div><strong>{{ byzantineMacedonian.threats[0] }}</strong><span>Конница · сила около {{ primaryThreat.strength }}</span></div>
       </div>
-      <div class="town-label"><span>Нижний посад</span><i>Порядок 72</i></div>
+      <div class="town-label"><span>{{ byzantineMacedonian.cityName }}</span><i>Порядок {{ game.order }} · легитимность {{ game.legitimacy }}</i></div>
       <div class="notice" data-testid="notice">{{ notice }}</div>
     </section>
 
-    <aside class="chronicle game-frame">
-      <div class="panel-heading"><ScrollText :size="18" /><h2>Летопись</h2><button aria-label="Свернуть">—</button></div>
-      <article v-for="entry in chronicle" :key="entry[0] as string" class="chronicle-entry">
-        <component :is="entry[3]" :size="24" :stroke-width="1.6" />
-        <div><strong>{{ entry[0] }}</strong><p>{{ entry[1] }}</p></div>
-        <time>{{ entry[2] }}</time>
+    <TopHud
+      :city-name="byzantineMacedonian.cityName"
+      :seed="game.map.seed"
+      :season="game.season"
+      :year="game.year"
+      :day="game.day"
+      :speed="speed"
+      :resources="topResources"
+      @speed="chooseSpeed"
+      @new-world="newWorld"
+      @save="saveSettlement"
+      @load="loadSettlement"
+      @toggle-drawer="toggleDrawer"
+    />
+
+    <EdgeDrawer v-if="activeDrawer === 'chronicle'" title="Летопись" @close="activeDrawer = null">
+      <article v-for="event in [...game.events].reverse().slice(0, 8)" :key="event.id" :class="['drawer-entry', event.tone]">
+        <time>{{ event.day }} день</time><strong>{{ event.title }}</strong><p>{{ event.text }}</p>
       </article>
-      <button class="wide-button">Показать старые записи</button>
-    </aside>
+    </EdgeDrawer>
 
-    <aside class="intel game-frame">
-      <div class="panel-heading"><Eye :size="18" /><h2>Разведка</h2><button aria-label="Свернуть">—</button></div>
-      <div class="threat-row">
-        <div class="threat critical"><Shield :size="24" /><strong>85</strong><span>Север</span></div>
-        <div class="threat"><Shield :size="24" /><strong>?</strong><span>Восток</span></div>
-        <div class="threat muted"><Shield :size="24" /><strong>0</strong><span>Юг</span></div>
-      </div>
-      <h3>Донесения</h3>
-      <ul class="messages">
-        <li class="danger">Вражеский отряд движется к Северным воротам.</li>
-        <li>Небольшая группа замечена у реки.</li>
-        <li class="safe">Наши купцы вне опасности.</li>
-      </ul>
-    </aside>
+    <EdgeDrawer v-if="activeDrawer === 'intel'" title="Разведка" @close="activeDrawer = null">
+      <div class="threat-summary"><Shield :size="28" /><strong>{{ primaryThreat?.strength ?? 0 }}</strong><span>Северо-восток</span></div>
+      <h3>{{ byzantineMacedonian.threats[0] }}</h3>
+      <p>Передовые разъезды движутся к дороге на Порфирополис. Состав войска уточняется.</p>
+      <ul class="political-actors"><li v-for="actor in byzantineMacedonian.threats" :key="actor">{{ actor }}</li></ul>
+    </EdgeDrawer>
 
-    <aside class="selection game-frame">
-      <div class="panel-heading"><Warehouse :size="18" /><h2>Амбар</h2><span>II ранг</span></div>
-      <div class="selected-building">
-        <div class="building-portrait"><Warehouse :size="44" :stroke-width="1.3" /></div>
-        <div><strong>1 200 / 1 200</strong><div class="meter"><i style="width: 100%"></i></div></div>
-      </div>
-      <p>Хранит зерно и припасы. Снижает порчу продуктов поблизости.</p>
-      <dl><div><dt>Запасы</dt><dd>2 845 / 3 600</dd></div><div><dt>Работники</dt><dd>5 / 5</dd></div></dl>
-      <div class="selection-actions"><button class="square-button"><Users :size="18" /></button><button class="square-button"><Hammer :size="18" /></button><button class="square-button danger-button"><Shield :size="18" /></button></div>
-    </aside>
-
-    <footer class="commandbar game-frame">
-      <section class="build-menu">
-        <div class="panel-heading"><Hammer :size="18" /><h2>Строительство</h2></div>
-        <div class="building-tools">
-          <button
-            v-for="building in buildings"
-            :key="building.kind"
-            :data-kind="building.kind"
-            :class="['build-button', { active: selectedTool === building.kind }]"
-            @click="selectedTool = building.kind"
-          >
-            <component :is="building.icon" :size="29" :stroke-width="1.45" /><span>{{ building.label }}</span>
-          </button>
-        </div>
-      </section>
-      <section class="army-menu">
-        <div class="panel-heading"><Shield :size="18" /><h2>Приказы дружине</h2></div>
-        <div class="army-actions"><button data-action="hold"><Shield :size="23" />Держать строй</button><button class="attack" data-action="attack" @click="defendCity"><Swords :size="23" />Атаковать</button></div>
-      </section>
-    </footer>
+    <ModeBar
+      :mode="mode"
+      :selected-tool="selectedTool"
+      :preset="byzantineMacedonian"
+      @mode="chooseMode"
+      @tool="chooseTool"
+      @attack="defendCity"
+    />
   </main>
 </template>

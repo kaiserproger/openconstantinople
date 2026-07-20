@@ -49,6 +49,7 @@ export class WorldRenderer {
   private readonly cameraController: CameraController
   private readonly picking: PickingController
   private worldMeshes: THREE.InstancedMesh[] = []
+  private readonly preview: THREE.Mesh
   private animationFrame = 0
   private seed = ''
   private buildings: Building[] = []
@@ -78,6 +79,13 @@ export class WorldRenderer {
 
     this.cameraController = new CameraController(this.camera, { width: 1, height: 1 })
     this.picking = new PickingController(this.camera)
+    this.preview = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({ color: 0xd3aa55, transparent: true, opacity: 0.48, depthWrite: false }),
+    )
+    this.preview.visible = false
+    this.preview.renderOrder = 20
+    this.scene.add(this.preview)
     this.resize()
     this.animate()
   }
@@ -105,9 +113,44 @@ export class WorldRenderer {
     return this.picking.pick(clientX, clientY, bounds)
   }
 
+  showPreview(kind: Building['kind'], point: { x: number; y: number }): boolean {
+    const valid = !this.buildings.some((building) => building.x === point.x && building.y === point.y)
+    const model = generateBuilding(kind, `preview:${kind}`, byzantineMacedonian)
+    const height = Math.max(0.22, ...model.voxels.map((voxel) => voxel.y + (voxel.scale?.[1] ?? 1) / 2))
+    this.preview.position.set(point.x, 1.5 + height / 2, point.y)
+    this.preview.scale.set(Math.max(1, model.footprint[0] - 0.35), height, Math.max(1, model.footprint[1] - 0.35))
+    const material = this.preview.material as THREE.MeshBasicMaterial
+    material.color.setHex(valid ? 0xd3aa55 : 0xb84e52)
+    material.opacity = valid ? 0.32 : 0.45
+    this.preview.visible = true
+    return valid
+  }
+
+  hidePreview(): void {
+    this.preview.visible = false
+  }
+
+  pan(deltaX: number, deltaZ: number): void {
+    this.cameraController.pan(deltaX, deltaZ)
+  }
+
+  zoom(delta: number): void {
+    this.cameraController.zoomBy(delta)
+  }
+
+  rotateQuarter(delta: number): void {
+    this.cameraController.rotateQuarter(delta)
+  }
+
+  cameraSnapshot() {
+    return this.cameraController.snapshot()
+  }
+
   dispose(): void {
     cancelAnimationFrame(this.animationFrame)
     this.disposeWorld()
+    this.preview.geometry.dispose()
+    ;(this.preview.material as THREE.Material).dispose()
     this.renderer.dispose()
   }
 

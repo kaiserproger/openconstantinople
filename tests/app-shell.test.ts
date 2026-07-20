@@ -5,8 +5,22 @@ describe('Openfront shell', () => {
   it('renders the settlement and uses no emoji controls', () => {
     const wrapper = mount(App)
     expect(wrapper.find('[data-testid="game-shell"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Вересков Дол')
+    expect(wrapper.text()).toContain('Порфирополис')
     expect(wrapper.text()).not.toMatch(/[▶⏸⚒⚔]/u)
+  })
+
+  it('keeps Byzantine chrome compact and opens one edge drawer on demand', async () => {
+    const wrapper = mount(App)
+
+    expect(wrapper.get('[data-testid="top-hud"]').classes()).toContain('top-hud')
+    expect(wrapper.findAll('[data-testid="edge-drawer"]')).toHaveLength(0)
+    expect(wrapper.text()).toContain('Порфирополис')
+    expect(wrapper.text()).toContain('Номисмы')
+
+    await wrapper.get('[data-action="toggle-intel"]').trigger('click')
+
+    expect(wrapper.findAll('[data-testid="edge-drawer"]')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="edge-drawer"]').text()).toContain('Разведка')
   })
 
   it('selects a building tool and places it on the world', async () => {

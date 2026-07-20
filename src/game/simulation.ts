@@ -178,6 +178,45 @@ export function placeBuilding(state: GameState, kind: BuildingKind, point: Point
   return { ok: true }
 }
 
+export function placePath(
+  state: GameState,
+  kind: 'road' | 'wall',
+  points: Point[],
+): { ok: true; placed: number } | { ok: false; reason: string } {
+  const unique = [...new Map(points.map((point) => [`${point.x}:${point.y}`, point])).values()]
+  if (!unique.length) return { ok: false, reason: 'Путь не задан' }
+  if (unique.some((point) => point.x < 0 || point.x > 63 || point.y < 0 || point.y > 63)) {
+    return { ok: false, reason: 'Путь выходит за границы карты' }
+  }
+  if (unique.some((point) => state.buildings.some((building) => building.x === point.x && building.y === point.y))) {
+    return { ok: false, reason: 'Здесь уже стоит постройка' }
+  }
+  const cost = BUILD_COSTS[kind]
+  const total = {
+    wood: cost.wood * unique.length,
+    stone: cost.stone * unique.length,
+    silver: cost.silver * unique.length,
+  }
+  if (state.resources.wood < total.wood || state.resources.stone < total.stone || state.resources.silver < total.silver) {
+    return { ok: false, reason: 'Не хватает припасов' }
+  }
+
+  state.resources.wood -= total.wood
+  state.resources.stone -= total.stone
+  state.resources.silver -= total.silver
+  for (const point of unique) {
+    state.buildings.push({ id: state.nextId++, kind, ...point, progress: 1, health: 100 })
+  }
+  state.events.push({
+    id: state.nextId++,
+    day: state.day,
+    title: kind === 'road' ? 'Проложена улица' : 'Возведена линия стены',
+    text: `Завершено участков: ${unique.length}.`,
+    tone: 'good',
+  })
+  return { ok: true, placed: unique.length }
+}
+
 export function revealThreat(state: GameState, kind: Threat['kind'], strength: number): Threat {
   const threat: Threat = {
     id: state.nextId++,
