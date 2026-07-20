@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, onUnmounted, reactive, ref } from 'vue'
 import {
   Castle,
   Coins,
@@ -10,19 +11,36 @@ import {
   Play,
   ScrollText,
   Shield,
+  Swords,
   TreePine,
   Users,
   Warehouse,
   Wheat,
 } from '@lucide/vue'
+import {
+  advanceGame,
+  createGame,
+  placeBuilding,
+  revealThreat,
+  resolveRaid,
+  type BuildingKind,
+} from './game/simulation'
 
-const resources = [
-  { label: 'Серебро', value: '2 134', gain: '+38', icon: Coins },
-  { label: 'Древесина', value: '1 589', gain: '+27', icon: TreePine },
-  { label: 'Камень', value: '1 276', gain: '+19', icon: Castle },
-  { label: 'Пища', value: '2 845', gain: '+46', icon: Wheat },
-  { label: 'Жители', value: '98 / 120', gain: '+1', icon: Users },
-]
+const game = reactive(createGame('heather-17'))
+revealThreat(game, 'raiders', 85)
+const initialBuildingCount = game.buildings.length
+const selectedTool = ref<BuildingKind>('road')
+const speed = ref<0 | 1 | 4>(1)
+const notice = ref('Выберите постройку и укажите место на карте')
+const battleVisible = ref(false)
+
+const resources = computed(() => [
+  { key: 'silver', label: 'Серебро', value: game.resources.silver.toLocaleString('ru-RU'), gain: '+4', icon: Coins },
+  { key: 'wood', label: 'Древесина', value: game.resources.wood.toLocaleString('ru-RU'), gain: '+8', icon: TreePine },
+  { key: 'stone', label: 'Камень', value: game.resources.stone.toLocaleString('ru-RU'), gain: '+3', icon: Castle },
+  { key: 'food', label: 'Пища', value: game.resources.food.toLocaleString('ru-RU'), gain: '−12', icon: Wheat },
+  { key: 'people', label: 'Жители', value: `${game.people} / ${game.capacity}`, gain: '+1', icon: Users },
+])
 
 const chronicle = [
   ['Налётчики замечены', 'Враги появились к северу от долины.', '17 день', Shield],
@@ -32,50 +50,118 @@ const chronicle = [
   ['Урожай собран', 'Поля принесли 612 мер зерна.', '13 день', Wheat],
 ]
 
-const buildings = [
-  ['Дорога', TreePine],
-  ['Дом', House],
-  ['Ферма', Wheat],
-  ['Лесопилка', TreePine],
-  ['Каменоломня', Hammer],
-  ['Амбар', Warehouse],
-  ['Рынок', Coins],
-  ['Кузница', Hammer],
-  ['Казарма', Shield],
-  ['Башня', Castle],
-  ['Стена', Shield],
-  ['Ратуша', Castle],
+const buildings: Array<{ label: string; kind: BuildingKind; icon: typeof House }> = [
+  { label: 'Дорога', kind: 'road', icon: TreePine },
+  { label: 'Дом', kind: 'house', icon: House },
+  { label: 'Ферма', kind: 'farm', icon: Wheat },
+  { label: 'Лесопилка', kind: 'lumberCamp', icon: TreePine },
+  { label: 'Каменоломня', kind: 'quarry', icon: Hammer },
+  { label: 'Амбар', kind: 'granary', icon: Warehouse },
+  { label: 'Рынок', kind: 'market', icon: Coins },
+  { label: 'Кузница', kind: 'smithy', icon: Hammer },
+  { label: 'Казарма', kind: 'barracks', icon: Shield },
+  { label: 'Башня', kind: 'watchtower', icon: Castle },
+  { label: 'Стена', kind: 'wall', icon: Shield },
+  { label: 'Ратуша', kind: 'townHall', icon: Castle },
 ]
+
+const placedBuildings = computed(() => game.buildings.slice(initialBuildingCount))
+const primaryThreat = computed(() => game.threats.find((threat) => threat.status !== 'disbanded'))
+
+function chooseSpeed(value: 0 | 1 | 4) {
+  speed.value = value
+  notice.value = value === 0 ? 'Время остановлено' : `Скорость времени: ${value}×`
+}
+
+function buildAt(event: MouseEvent) {
+  const element = event.currentTarget as HTMLElement
+  const bounds = element.getBoundingClientRect()
+  const width = bounds.width || 1000
+  const height = bounds.height || 600
+  const x = Math.max(0, Math.min(63, Math.round(((event.clientX - bounds.left) / width) * 63)))
+  const y = Math.max(0, Math.min(63, Math.round(((event.clientY - bounds.top) / height) * 63)))
+  const result = placeBuilding(game, selectedTool.value, { x, y })
+  notice.value = result.ok ? `${buildings.find((item) => item.kind === selectedTool.value)?.label} заложена` : result.reason
+}
+
+function buildingStyle(x: number, y: number) {
+  return { left: `${(x / 63) * 100}%`, top: `${(y / 63) * 100}%` }
+}
+
+function defendCity() {
+  if (!primaryThreat.value) {
+    notice.value = 'Разведка не видит доступных целей'
+    return
+  }
+  battleVisible.value = true
+  const result = resolveRaid(game, primaryThreat.value.id, 68)
+  notice.value = result.outcome === 'victory'
+    ? `Налёт отбит · враг потерял ${result.enemyLosses}, город — ${result.cityLosses}`
+    : `Посад прорван · потери ${result.cityLosses}`
+}
+
+const timer = window.setInterval(() => {
+  if (speed.value > 0) advanceGame(game, speed.value)
+}, 3500)
+onUnmounted(() => window.clearInterval(timer))
 </script>
 
 <template>
   <main class="game-shell" data-testid="game-shell">
     <header class="topbar game-frame">
       <div class="resource-strip">
-        <div v-for="resource in resources" :key="resource.label" class="resource" :title="resource.label">
+        <div v-for="resource in resources" :key="resource.label" class="resource" :title="resource.label" :data-resource="resource.key">
           <component :is="resource.icon" :size="20" :stroke-width="1.8" aria-hidden="true" />
           <div><strong>{{ resource.value }}</strong><span>{{ resource.gain }}</span></div>
         </div>
       </div>
       <div class="settlement-mark">
         <span class="crest"><Castle :size="27" :stroke-width="1.7" /></span>
-        <div><h1>Вересков Дол</h1><p>Осень · Сумерки · 4 год, 17 день</p></div>
+        <div><h1>Вересков Дол</h1><p>{{ game.season }} · Сумерки · {{ game.year }} год, {{ game.day }} день</p></div>
       </div>
       <div class="time-controls" aria-label="Скорость времени">
-        <button class="square-button"><Pause :size="18" /><span class="sr-only">Пауза</span></button>
-        <button class="square-button active"><Play :size="18" /><span class="sr-only">Обычная скорость</span></button>
-        <button class="square-button"><FastForward :size="18" /><span class="sr-only">Быстро</span></button>
+        <span class="speed-label" data-testid="speed-label">{{ speed }}×</span>
+        <button :class="['square-button', { active: speed === 0 }]" data-speed="0" @click="chooseSpeed(0)"><Pause :size="18" /><span class="sr-only">Пауза</span></button>
+        <button :class="['square-button', { active: speed === 1 }]" data-speed="1" @click="chooseSpeed(1)"><Play :size="18" /><span class="sr-only">Обычная скорость</span></button>
+        <button :class="['square-button', { active: speed === 4 }]" data-speed="4" @click="chooseSpeed(4)"><FastForward :size="18" /><span class="sr-only">Быстро</span></button>
       </div>
     </header>
 
-    <section class="world" aria-label="Карта поселения">
+    <section class="world" aria-label="Карта поселения" data-testid="world" @click="buildAt">
       <img src="/assets/concepts/openfront-primary-screen.png" alt="Средневековый город Вересков Дол" />
       <div class="world-vignette"></div>
-      <div class="raid-marker">
+      <div v-if="primaryThreat" class="raid-marker">
         <Shield :size="20" />
-        <div><strong>Северный дозор</strong><span>Всадники · примерно 85</span></div>
+        <div><strong>Северный дозор</strong><span>Всадники · примерно {{ primaryThreat.strength }}</span></div>
       </div>
       <div class="town-label"><span>Нижний посад</span><i>Порядок 72</i></div>
+      <template v-if="battleVisible">
+        <div
+          v-for="index in 4"
+          :key="`friendly-${index}`"
+          class="battle-unit friendly"
+          data-testid="friendly-unit"
+          :style="{ left: `${48 + index * 2.2}%`, top: `${31 + (index % 2) * 4}%` }"
+        ><Shield :size="18" /></div>
+        <div
+          v-for="index in 5"
+          :key="`enemy-${index}`"
+          class="battle-unit enemy"
+          data-testid="enemy-unit"
+          :style="{ left: `${62 + index * 2.4}%`, top: `${21 + (index % 2) * 4}%` }"
+        ><Swords :size="18" /></div>
+      </template>
+      <div
+        v-for="building in placedBuildings"
+        :key="building.id"
+        class="placed-building"
+        data-testid="placed-building"
+        :style="buildingStyle(building.x, building.y)"
+      >
+        <component :is="buildings.find((item) => item.kind === building.kind)?.icon || House" :size="27" />
+        <span>{{ buildings.find((item) => item.kind === building.kind)?.label }}</span>
+      </div>
+      <div class="notice" data-testid="notice">{{ notice }}</div>
     </section>
 
     <aside class="chronicle game-frame">
@@ -118,14 +204,20 @@ const buildings = [
       <section class="build-menu">
         <div class="panel-heading"><Hammer :size="18" /><h2>Строительство</h2></div>
         <div class="building-tools">
-          <button v-for="(building, index) in buildings" :key="building[0] as string" :class="['build-button', { active: index === 0 }]">
-            <component :is="building[1]" :size="29" :stroke-width="1.45" /><span>{{ building[0] }}</span>
+          <button
+            v-for="building in buildings"
+            :key="building.kind"
+            :data-kind="building.kind"
+            :class="['build-button', { active: selectedTool === building.kind }]"
+            @click="selectedTool = building.kind"
+          >
+            <component :is="building.icon" :size="29" :stroke-width="1.45" /><span>{{ building.label }}</span>
           </button>
         </div>
       </section>
       <section class="army-menu">
         <div class="panel-heading"><Shield :size="18" /><h2>Приказы дружине</h2></div>
-        <div class="army-actions"><button><Shield :size="23" />Держать строй</button><button class="attack"><Hammer :size="23" />Атаковать</button></div>
+        <div class="army-actions"><button data-action="hold"><Shield :size="23" />Держать строй</button><button class="attack" data-action="attack" @click="defendCity"><Swords :size="23" />Атаковать</button></div>
       </section>
     </footer>
   </main>
