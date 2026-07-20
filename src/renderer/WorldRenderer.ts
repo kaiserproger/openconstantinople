@@ -4,8 +4,10 @@ import { byzantineMacedonian } from '../presets'
 import { generateBuilding } from '../voxel/buildings'
 import { generateTerrain } from '../voxel/terrain'
 import type { VoxelModel } from '../voxel/types'
+import { generateUnitModel } from '../voxel/units'
 import { CameraController } from './CameraController'
 import { PickingController } from './PickingController'
+import { SceneMetrics } from './SceneMetrics'
 import { VoxelBatch } from './VoxelBatch'
 
 const MAX_PIXEL_RATIO = 1.5
@@ -26,21 +28,16 @@ function terrainModel(seed: string): VoxelModel {
   return { id: `terrain:${seed}`, footprint: [64, 64], anchor: [32, 0, 32], voxels }
 }
 
-function unitModel(side: 'friendly' | 'enemy', count: number): VoxelModel {
-  const material = side === 'friendly' ? 'porphyry' : 'iron'
-  const originX = side === 'friendly' ? 35 : 47
-  const originZ = side === 'friendly' ? 24 : 16
-  const voxels: VoxelModel['voxels'] = []
-  for (let index = 0; index < count; index += 1) {
-    const column = index % 25
-    const row = Math.floor(index / 25)
-    const x = originX + column * 0.52
-    const z = originZ + row * 0.58
-    voxels.push({ x, y: 2.25, z, material, scale: [0.28, 1.25, 0.28] })
-    voxels.push({ x, y: 3.05, z, material: side === 'friendly' ? 'gold' : 'roof', scale: [0.38, 0.38, 0.38] })
-  }
-  return { id: `army:${side}`, footprint: [1, 1], anchor: [0, 0, 0], voxels }
+export interface BattleRenderUnit {
+  id: number
+  kind: 'militia' | 'retinue' | 'raider'
+  faction: 'friendly' | 'enemy'
+  x: number
+  z: number
+  morale: number
 }
+
+export interface BattleRenderSnapshot { units: BattleRenderUnit[] }
 
 export class WorldRenderer {
   private readonly scene = new THREE.Scene()
@@ -48,20 +45,25 @@ export class WorldRenderer {
   private readonly renderer: THREE.WebGLRenderer
   private readonly cameraController: CameraController
   private readonly picking: PickingController
+  private readonly metrics: SceneMetrics
   private worldMeshes: THREE.InstancedMesh[] = []
   private readonly preview: THREE.Mesh
   private animationFrame = 0
+  private needsRender = true
   private seed = ''
   private buildings: Building[] = []
   private battleVisible = false
   private stressMode = false
+  private visibleUnits = 0
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' })
     this.renderer.setClearColor(0x8f805f, 1)
-    this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    this.renderer.shadowMap.enabled = false
+    this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
+    this.renderer.toneMappingExposure = 1.08
     this.scene.background = new THREE.Color(0x8d805f)
     this.scene.fog = new THREE.FogExp2(0xa99a75, 0.011)
 
@@ -79,6 +81,7 @@ export class WorldRenderer {
 
     this.cameraController = new CameraController(this.camera, { width: 1, height: 1 })
     this.picking = new PickingController(this.camera)
+    this.metrics = new SceneMetrics(this.renderer)
     this.preview = new THREE.Mesh(
       new THREE.BoxGeometry(1, 1, 1),
       new THREE.MeshBasicMaterial({ color: 0xd3aa55, transparent: true, opacity: 0.48, depthWrite: false }),
@@ -99,6 +102,7 @@ export class WorldRenderer {
     this.battleVisible = battleVisible
     this.stressMode = stressMode
     this.rebuild()
+    this.invalidate()
   }
 
   resize(): void {
@@ -107,6 +111,7 @@ export class WorldRenderer {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO))
     this.renderer.setSize(width, height, false)
     this.cameraController.resize({ width, height })
+    this.invalidate()
   }
 
   pickGrid(clientX: number, clientY: number, bounds: DOMRect): { x: number; y: number } | null {
@@ -123,23 +128,28 @@ export class WorldRenderer {
     material.color.setHex(valid ? 0xd3aa55 : 0xb84e52)
     material.opacity = valid ? 0.32 : 0.45
     this.preview.visible = true
+    this.invalidate()
     return valid
   }
 
   hidePreview(): void {
     this.preview.visible = false
+    this.invalidate()
   }
 
   pan(deltaX: number, deltaZ: number): void {
     this.cameraController.pan(deltaX, deltaZ)
+    this.invalidate()
   }
 
   zoom(delta: number): void {
     this.cameraController.zoomBy(delta)
+    this.invalidate()
   }
 
   rotateQuarter(delta: number): void {
     this.cameraController.rotateQuarter(delta)
+    this.invalidate()
   }
 
   cameraSnapshot() {
@@ -148,6 +158,7 @@ export class WorldRenderer {
 
   restoreCamera(snapshot: ReturnType<CameraController['snapshot']>): void {
     this.cameraController.restore(snapshot)
+    this.invalidate()
   }
 
   dispose(): void {
@@ -168,8 +179,15 @@ export class WorldRenderer {
     }
     if (this.battleVisible) {
       const count = this.stressMode ? 150 : 18
-      batch.add(unitModel('friendly', count))
-      batch.add(unitModel('enemy', count))
+      for (let index = 0; index < count; index += 1) {
+        const column = index % 25
+        const row = Math.floor(index / 25)
+        batch.add(generateUnitModel(index % 5 === 0 ? 'retinue' : 'militia', 'friendly', this.stressMode), new THREE.Vector3(34 + column * 0.58, 1.5, 24 + row * 0.62))
+        batch.add(generateUnitModel('raider', 'enemy', this.stressMode), new THREE.Vector3(47 + column * 0.58, 1.5, 16 + row * 0.62))
+      }
+      this.visibleUnits = count * 2
+    } else {
+      this.visibleUnits = 0
     }
     this.worldMeshes = batch.commit(this.scene)
   }
@@ -184,8 +202,17 @@ export class WorldRenderer {
     this.worldMeshes = []
   }
 
+  private invalidate(): void {
+    this.needsRender = true
+  }
+
   private animate = (): void => {
     this.animationFrame = requestAnimationFrame(this.animate)
-    this.renderer.render(this.scene, this.camera)
+    if (this.needsRender) {
+      this.renderer.render(this.scene, this.camera)
+      this.needsRender = false
+    }
+    const snapshot = this.metrics.sample(performance.now(), this.visibleUnits)
+    if (this.stressMode) window.__OPENFRONT_METRICS__ = snapshot
   }
 }

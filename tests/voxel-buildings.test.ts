@@ -5,6 +5,7 @@ import { VoxelBatch } from '../src/renderer/VoxelBatch'
 import { generateBuilding } from '../src/voxel/buildings'
 import { createSeededRandom } from '../src/voxel/prng'
 import type { VoxelModel } from '../src/voxel/types'
+import { generateUnitModel } from '../src/voxel/units'
 
 it('replays a voxel seed exactly', () => {
   const first = createSeededRandom('porphyry')
@@ -64,4 +65,15 @@ it('gives civic architecture a stronger silhouette than housing', () => {
     Math.max(...house.voxels.map((voxel) => voxel.y)),
   )
   expect(palace.voxels.filter((voxel) => voxel.material === 'gold').length).toBeGreaterThan(0)
+})
+
+it('distinguishes tagma and raider by silhouette and faction material', () => {
+  const tagma = generateUnitModel('retinue', 'friendly')
+  const raider = generateUnitModel('raider', 'enemy')
+
+  expect(tagma.voxels).not.toEqual(raider.voxels)
+  expect(tagma.voxels.some((voxel) => voxel.material === 'porphyry')).toBe(true)
+  expect(raider.voxels.some((voxel) => voxel.material === 'brick')).toBe(true)
+  expect(tagma.voxels.length).toBeLessThanOrEqual(18)
+  expect(raider.voxels.length).toBeLessThanOrEqual(18)
 })
