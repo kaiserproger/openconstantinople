@@ -165,24 +165,21 @@ defineExpose({ snapshotCamera, restoreCamera })
 
 onMounted(async () => {
   if (!canvas.value) return
+  window.addEventListener('keydown', keyDown)
+  canvas.value.addEventListener('webglcontextlost', contextLost)
+  canvas.value.addEventListener('webglcontextrestored', contextRestored)
   try {
-    const hasWebGL = Boolean(canvas.value.getContext('webgl2') || canvas.value.getContext('webgl'))
-    if (hasWebGL) {
-      const { WorldRenderer } = await import('../renderer/WorldRenderer')
-      if (!canvas.value || disposed) return
-      world = new WorldRenderer(canvas.value)
-      syncWorld()
-      if (typeof ResizeObserver !== 'undefined') {
-        resizeObserver = new ResizeObserver(() => world?.resize())
-        resizeObserver.observe(canvas.value)
-      }
+    const { WorldRenderer } = await import('../renderer/WorldRenderer')
+    if (!canvas.value || disposed) return
+    world = new WorldRenderer(canvas.value)
+    syncWorld()
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => world?.resize())
+      resizeObserver.observe(canvas.value)
     }
   } catch (error) {
     console.warn('Voxel renderer unavailable; interaction fallback remains active.', error)
   }
-  window.addEventListener('keydown', keyDown)
-  canvas.value.addEventListener('webglcontextlost', contextLost)
-  canvas.value.addEventListener('webglcontextrestored', contextRestored)
 })
 
 watch(() => [props.seed, props.buildings.length, props.battleVisible, props.stressMode], syncWorld)
