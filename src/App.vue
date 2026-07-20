@@ -29,6 +29,7 @@ import {
   type BuildingKind,
 } from './game/simulation'
 import { decodeSave, encodeSave } from './game/persistence'
+import GameWorld from './components/GameWorld.vue'
 
 const game = reactive(createGame('heather-17'))
 revealThreat(game, 'raiders', 85)
@@ -37,24 +38,7 @@ const speed = ref<0 | 1 | 4>(1)
 const notice = ref('Выберите постройку и укажите место на карте')
 const battleVisible = ref(false)
 const stressMode = new URLSearchParams(window.location.search).has('stress')
-const friendlyUnitCount = stressMode ? 150 : 4
-const enemyUnitCount = stressMode ? 150 : 5
 let worldCounter = 1
-
-const buildingAssetPositions: Record<BuildingKind, string> = {
-  road: '0% 0%',
-  house: '33.333% 0%',
-  farm: '66.667% 0%',
-  lumberCamp: '100% 0%',
-  quarry: '0% 50%',
-  granary: '33.333% 50%',
-  market: '66.667% 50%',
-  smithy: '100% 50%',
-  barracks: '0% 100%',
-  watchtower: '33.333% 100%',
-  wall: '66.667% 100%',
-  townHall: '100% 100%',
-}
 
 const resources = computed(() => [
   { key: 'silver', label: 'Серебро', value: game.resources.silver.toLocaleString('ru-RU'), gain: '+4', icon: Coins },
@@ -87,7 +71,6 @@ const buildings: Array<{ label: string; kind: BuildingKind; icon: typeof House }
   { label: 'Ратуша', kind: 'townHall', icon: Castle },
 ]
 
-const placedBuildings = computed(() => game.buildings)
 const primaryThreat = computed(() => game.threats.find((threat) => threat.status !== 'disbanded'))
 
 function chooseSpeed(value: 0 | 1 | 4) {
@@ -95,41 +78,9 @@ function chooseSpeed(value: 0 | 1 | 4) {
   notice.value = value === 0 ? 'Время остановлено' : `Скорость времени: ${value}×`
 }
 
-function buildAt(event: MouseEvent) {
-  const element = event.currentTarget as HTMLElement
-  const bounds = element.getBoundingClientRect()
-  const width = bounds.width || 1000
-  const height = bounds.height || 600
-  const x = Math.max(0, Math.min(63, Math.round(((event.clientX - bounds.left) / width) * 63)))
-  const y = Math.max(0, Math.min(63, Math.round(((event.clientY - bounds.top) / height) * 63)))
-  const result = placeBuilding(game, selectedTool.value, { x, y })
+function buildAt(point: { x: number; y: number }) {
+  const result = placeBuilding(game, selectedTool.value, point)
   notice.value = result.ok ? `${buildings.find((item) => item.kind === selectedTool.value)?.label} заложена` : result.reason
-}
-
-function buildingStyle(x: number, y: number) {
-  return { left: `${(x / 63) * 100}%`, top: `${(y / 63) * 100}%` }
-}
-
-function placedBuildingStyle(kind: BuildingKind, x: number, y: number) {
-  return {
-    ...buildingStyle(x, y),
-    backgroundPosition: buildingAssetPositions[kind],
-    zIndex: 10 + y,
-  }
-}
-
-function battleUnitStyle(index: number, side: 'friendly' | 'enemy') {
-  if (!stressMode) {
-    return side === 'friendly'
-      ? { left: `${48 + index * 2.2}%`, top: `${31 + (index % 2) * 4}%` }
-      : { left: `${62 + index * 2.4}%`, top: `${21 + (index % 2) * 4}%` }
-  }
-
-  const column = (index - 1) % 25
-  const row = Math.floor((index - 1) / 25)
-  return side === 'friendly'
-    ? { left: `${38 + column * 1.05}%`, top: `${27 + row * 2.45}%` }
-    : { left: `${58 + column * 1.05}%`, top: `${14 + row * 2.45}%` }
 }
 
 function defendCity() {
@@ -204,61 +155,21 @@ onUnmounted(() => window.clearInterval(timer))
       </div>
     </header>
 
-    <section class="world" aria-label="Карта поселения" data-testid="world" @click="buildAt">
-      <img :src="'/assets/terrain/empty-valley.png'" alt="Пустая средневековая долина Вересков Дол" />
+    <section class="world" aria-label="Карта поселения" data-testid="world">
+      <GameWorld
+        :seed="game.map.seed"
+        :buildings="game.buildings"
+        :selected-tool="selectedTool"
+        :battle-visible="battleVisible"
+        :stress-mode="stressMode"
+        @build="buildAt"
+      />
       <div class="world-vignette"></div>
-      <div
-        v-for="(point, index) in game.map.forests.slice(0, 8)"
-        :key="`forest-${index}-${game.map.seed}`"
-        class="resource-zone forest"
-        aria-label="Лесные угодья"
-        :style="buildingStyle(point.x, point.y)"
-      ></div>
-      <div
-        v-for="(point, index) in game.map.fertileFields.slice(0, 5)"
-        :key="`field-${index}-${game.map.seed}`"
-        class="resource-zone field"
-        aria-label="Плодородная земля"
-        :style="buildingStyle(point.x, point.y)"
-      ></div>
-      <div
-        v-for="(point, index) in game.map.stoneDeposits.slice(0, 3)"
-        :key="`stone-${index}-${game.map.seed}`"
-        class="resource-zone stone"
-        aria-label="Каменная жила"
-        :style="buildingStyle(point.x, point.y)"
-      ></div>
       <div v-if="primaryThreat" class="raid-marker">
         <Shield :size="20" />
         <div><strong>Северный дозор</strong><span>Всадники · примерно {{ primaryThreat.strength }}</span></div>
       </div>
       <div class="town-label"><span>Нижний посад</span><i>Порядок 72</i></div>
-      <template v-if="battleVisible">
-        <div
-          v-for="index in friendlyUnitCount"
-          :key="`friendly-${index}`"
-          class="battle-unit friendly"
-          data-testid="friendly-unit"
-          :style="battleUnitStyle(index, 'friendly')"
-        ></div>
-        <div
-          v-for="index in enemyUnitCount"
-          :key="`enemy-${index}`"
-          class="battle-unit enemy"
-          data-testid="enemy-unit"
-          :style="battleUnitStyle(index, 'enemy')"
-        ></div>
-      </template>
-      <div
-        v-for="building in placedBuildings"
-        :key="building.id"
-        :class="['placed-building', `asset-${building.kind}`]"
-        data-testid="placed-building"
-        :data-asset="building.kind"
-        :style="placedBuildingStyle(building.kind, building.x, building.y)"
-      >
-        <span>{{ buildings.find((item) => item.kind === building.kind)?.label }}</span>
-      </div>
       <div class="notice" data-testid="notice">{{ notice }}</div>
     </section>
 

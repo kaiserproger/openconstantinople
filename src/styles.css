@@ -44,7 +44,7 @@ button:focus-visible { outline: 2px solid #f0cc82; outline-offset: 2px; }
 .square-button:active { border-style: inset; transform: translateY(1px); }
 
 .world { position: absolute; inset: 61px 0 160px; overflow: hidden; background: #5f6950; }
-.world > img { width: 100%; height: 100%; object-fit: cover; object-position: center 52%; filter: saturate(.92) contrast(1.03) brightness(.83); transform: scale(1.04); }
+.voxel-world { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: linear-gradient(#9c8b67,#66543c); touch-action: none; cursor: crosshair; }
 .world-vignette { position: absolute; inset: 0; background: radial-gradient(circle at 52% 48%, transparent 45%, rgba(20,13,24,.4) 100%); pointer-events: none; }
 .raid-marker { position: absolute; top: 12%; left: 68%; display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: rgba(35,22,35,.9); border: 1px solid #be6575; box-shadow: 0 4px 18px #0009; color: #e7b1ac; }
 .raid-marker div { display: grid; }
@@ -52,17 +52,6 @@ button:focus-visible { outline: 2px solid #f0cc82; outline-offset: 2px; }
 .raid-marker span { font-size: 11px; color: #d1bdc7; }
 .town-label { position: absolute; left: 48%; top: 65%; transform: translate(-50%,-50%); display: grid; text-align: center; text-shadow: 0 2px 5px #000,0 0 10px #000; pointer-events: none; }
 .town-label span { font: 700 18px 'Alegreya', serif; }.town-label i { font-style: normal; font-size: 11px; color: #d3c5aa; }
-.placed-building { position: absolute; transform: translate(-50%,-78%); width: 172px; height: 156px; background-image: url('/assets/buildings/building-atlas.png'); background-repeat: no-repeat; background-size: 400% 300%; filter: drop-shadow(0 8px 6px #000a); cursor: default; }
-.placed-building.asset-townHall { width: 230px; height: 212px; }.placed-building.asset-watchtower { width: 124px; height: 178px; }.placed-building.asset-house { width: 148px; height: 138px; }.placed-building.asset-road { width: 132px; height: 90px; transform: translate(-50%,-50%); }.placed-building.asset-wall { width: 176px; height: 118px; }
-.placed-building span { position: absolute; left: 50%; top: 90%; transform: translateX(-50%); padding: 2px 6px; color: #f3e9cf; background: #1c1323e8; border: 1px solid #695573; font-size: 10px; white-space: nowrap; opacity: 0; transition: opacity .15s ease; }
-.placed-building:hover span { opacity: 1; }
-.battle-unit { position: absolute; z-index: 80; width: 78px; height: 98px; background-image: url('/assets/units/combatants.png'); background-repeat: no-repeat; background-size: 200% 100%; filter: drop-shadow(0 4px 3px #000c); animation: battle-pulse 1.1s ease-in-out infinite alternate; }
-.battle-unit.friendly { background-position: 0 0; }
-.battle-unit.enemy { background-position: 100% 0; animation-delay: -.45s; }
-.stress-mode .battle-unit { width: 12px; height: 12px; contain: strict; animation: none; box-shadow: 0 2px 4px #000b; }
-.resource-zone { position: absolute; z-index: 2; transform: translate(-50%,-50%) rotate(-9deg); width: 76px; height: 38px; border-radius: 50%; opacity: .27; pointer-events: none; mix-blend-mode: multiply; }
-.resource-zone.forest { background: radial-gradient(ellipse, #233d26 0 42%, transparent 70%); }.resource-zone.field { background: radial-gradient(ellipse, #a88a42 0 40%, transparent 72%); }.resource-zone.stone { width: 54px; height: 31px; background: radial-gradient(ellipse, #4d4a4d 0 38%, transparent 72%); }
-@keyframes battle-pulse { from { transform: translateY(0) scale(.94); } to { transform: translateY(-4px) scale(1.04); } }
 .notice { position: absolute; z-index: 5; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 7px 15px; color: #e9d8bb; background: #211725e6; border: 1px solid #80698a; box-shadow: 0 4px 12px #0008; font-size: 12px; pointer-events: none; }
 
 .chronicle { position: absolute; z-index: 6; top: 72px; left: 10px; bottom: 172px; width: 248px; padding: 7px; }
