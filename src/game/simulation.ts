@@ -147,7 +147,7 @@ export function createGame(seed: string): GameState {
     x: x as number,
     y: y as number,
     progress: 1,
-    health: 100,
+    health: kind === 'watchtower' ? 72 : 100,
   }))
   return {
     tick: 0,
@@ -223,6 +223,69 @@ export function placePath(
     tone: 'good',
   })
   return { ok: true, placed: unique.length }
+}
+
+type MaterialBundle = { wood: number; stone: number; silver: number }
+
+function scaledMaterials(cost: MaterialBundle, fraction: number, round: 'up' | 'down'): MaterialBundle {
+  const apply = round === 'up' ? Math.ceil : Math.floor
+  return {
+    wood: apply(cost.wood * fraction),
+    stone: apply(cost.stone * fraction),
+    silver: apply(cost.silver * fraction),
+  }
+}
+
+export function repairBuilding(
+  state: GameState,
+  buildingId: number,
+): { ok: true; cost: MaterialBundle } | { ok: false; reason: string } {
+  const building = state.buildings.find((item) => item.id === buildingId)
+  if (!building) return { ok: false, reason: 'Постройка не найдена' }
+  if (building.health >= 100) return { ok: false, reason: 'Постройка не нуждается в ремонте' }
+
+  const damage = (100 - Math.max(0, building.health)) / 100
+  const cost = scaledMaterials(BUILD_COSTS[building.kind], damage, 'up')
+  if (state.resources.wood < cost.wood || state.resources.stone < cost.stone || state.resources.silver < cost.silver) {
+    return { ok: false, reason: 'Не хватает материалов для ремонта' }
+  }
+
+  state.resources.wood -= cost.wood
+  state.resources.stone -= cost.stone
+  state.resources.silver -= cost.silver
+  building.health = 100
+  state.events.push({
+    id: state.nextId++,
+    day: state.day,
+    title: 'Постройка восстановлена',
+    text: `Завершён ремонт постройки №${building.id}.`,
+    tone: 'good',
+  })
+  return { ok: true, cost }
+}
+
+export function demolishBuilding(
+  state: GameState,
+  buildingId: number,
+): { ok: true; salvage: MaterialBundle } | { ok: false; reason: string } {
+  const index = state.buildings.findIndex((item) => item.id === buildingId)
+  if (index < 0) return { ok: false, reason: 'Постройка не найдена' }
+  const building = state.buildings[index]!
+  if (building.kind === 'townHall') return { ok: false, reason: 'Главное здание нельзя разобрать' }
+
+  const salvage = scaledMaterials(BUILD_COSTS[building.kind], 0.25, 'down')
+  state.buildings.splice(index, 1)
+  state.resources.wood += salvage.wood
+  state.resources.stone += salvage.stone
+  state.resources.silver += salvage.silver
+  state.events.push({
+    id: state.nextId++,
+    day: state.day,
+    title: 'Участок расчищен',
+    text: `Постройка №${building.id} разобрана; часть материалов возвращена на склад.`,
+    tone: 'neutral',
+  })
+  return { ok: true, salvage }
 }
 
 export function revealThreat(state: GameState, kind: Threat['kind'], strength: number): Threat {

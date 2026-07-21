@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import App from '../src/App.vue'
+import GameWorld from '../src/components/GameWorld.vue'
 
 describe('Openfront shell', () => {
   it('renders the settlement and uses no emoji controls', () => {
@@ -41,6 +42,29 @@ describe('Openfront shell', () => {
     await wrapper.get('[data-testid="voxel-world"]').trigger('click', { clientX: 560, clientY: 360 })
 
     expect(wrapper.get('[data-resource="wood"]').text()).toContain('112')
+  })
+
+  it('opens a real building card and applies object commands to the simulation', async () => {
+    const wrapper = mount(App)
+    const world = wrapper.getComponent(GameWorld)
+
+    world.vm.$emit('select', 1)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('[data-testid="object-card"]').text()).toContain('Состояние100%')
+    expect(wrapper.get('[data-testid="edge-drawer"]').text()).toContain('Дворец стратега')
+    expect(wrapper.get('[data-action="demolish-building"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="edge-drawer"]').text()).toContain('неразбираемый центр')
+
+    world.vm.$emit('select', 5)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="edge-drawer"]').text()).toContain('Инсула')
+
+    await wrapper.get('[data-action="demolish-building"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="object-card"]').exists()).toBe(false)
+    expect(wrapper.get('[data-resource="wood"]').text()).toContain('122')
+    expect(wrapper.get('[data-testid="notice"]').text()).toContain('Участок расчищен')
   })
 
   it('changes time speed through SVG controls', async () => {

@@ -8,9 +8,11 @@ test('builds, rotates, saves, reloads, and fights on the live voxel map', async 
 
   await page.goto('/')
   await page.locator('[data-speed="0"]').click()
+  await expect(page.getByTestId('speed-label')).toHaveText('0×')
   await expect(page.getByTestId('voxel-world')).toBeVisible()
   await expect(page.getByText('Порфирополис').first()).toBeVisible()
   const seedBefore = await page.getByTestId('seed').textContent()
+  const woodBefore = Number(await page.locator('[data-resource="wood"] b').textContent())
 
   await page.locator('[data-action="toggle-court"]').click()
   await expect(page.getByTestId('edge-drawer')).toContainText('Двор стратега')
@@ -21,8 +23,18 @@ test('builds, rotates, saves, reloads, and fights on the live voxel map', async 
 
   await page.locator('[data-kind="house"]').click()
   await page.getByTestId('voxel-world').click({ position: { x: 620, y: 480 } })
+  await expect(page.getByTestId('edge-drawer')).toContainText('Фриктория')
+  await expect(page.getByTestId('object-card')).toContainText('Состояние72%')
+  await page.locator('[data-action="repair-building"]').click()
+  await expect(page.getByTestId('notice')).toContainText('Ремонт завершён')
+  await expect(page.getByTestId('object-card')).toContainText('Состояние100%')
+  await page.locator('[data-action="demolish-building"]').click()
+  await expect(page.getByTestId('notice')).toContainText('Участок расчищен')
+
+  await page.locator('[data-kind="house"]').click()
+  await page.getByTestId('voxel-world').click({ position: { x: 850, y: 520 } })
   await expect(page.getByTestId('notice')).toContainText('Инсула заложена')
-  await expect(page.locator('[data-resource="wood"]')).toContainText('112')
+  await expect(page.locator('[data-resource="wood"] b')).toHaveText(String(woodBefore - 9))
 
   const quarterBefore = await page.getByTestId('camera-state').getAttribute('data-quarter')
   await page.keyboard.press('KeyE')
@@ -33,7 +45,7 @@ test('builds, rotates, saves, reloads, and fights on the live voxel map', async 
   await page.locator('[data-action="new-world"]').click()
   await expect(page.getByTestId('seed')).not.toHaveText(seedBefore ?? '')
   await page.locator('[data-action="load"]').click()
-  await expect(page.locator('[data-resource="wood"]')).toContainText('112')
+  await expect(page.locator('[data-resource="wood"] b')).toHaveText(String(woodBefore - 9))
 
   await page.locator('[data-action="attack"]').click()
   await expect(page.getByTestId('voxel-world')).toHaveAttribute('data-battle', 'true')
@@ -43,6 +55,8 @@ test('builds, rotates, saves, reloads, and fights on the live voxel map', async 
 
 test('holds the instanced raid at a 60 fps-class cadence with 300 units', async ({ page }) => {
   await page.goto('/?stress=1')
+  await page.getByTestId('voxel-world').click({ position: { x: 620, y: 480 } })
+  await expect(page.getByTestId('object-card')).toBeVisible()
   await page.locator('[data-action="attack"]').click()
   await expect.poll(async () => page.evaluate(() => window.__OPENFRONT_METRICS__?.visibleUnits)).toBe(300)
   await page.waitForTimeout(3200)

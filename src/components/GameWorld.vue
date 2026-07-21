@@ -8,6 +8,7 @@ const props = defineProps<{
   seed: string
   buildings: Building[]
   selectedTool: BuildingKind | null
+  selectedBuildingId: number | null
   battleVisible: boolean
   stressMode: boolean
 }>()
@@ -15,6 +16,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   build: [point: Point]
   buildPath: [points: Point[]]
+  select: [buildingId: number]
   cancel: []
   cameraChange: [snapshot: CameraSnapshot]
 }>()
@@ -30,6 +32,10 @@ let handledPointerClick = false
 
 function syncWorld(): void {
   world?.setWorld(props.seed, props.buildings, props.battleVisible, props.stressMode)
+}
+
+function syncSelection(): void {
+  world?.setSelectedBuilding(props.selectedBuildingId)
 }
 
 function fallbackPick(event: MouseEvent, bounds: DOMRect): Point {
@@ -108,8 +114,15 @@ function pointerUp(event: PointerEvent): void {
   const moved = Math.hypot(event.clientX - pointerStart.clientX, event.clientY - pointerStart.clientY)
   if (props.selectedTool && (props.selectedTool === 'road' || props.selectedTool === 'wall') && moved > 4) {
     emit('buildPath', gridLine(pointerStart.point, end))
-  } else if (props.selectedTool && moved <= 4) {
-    emit('build', end)
+  } else if (moved <= 4) {
+    const bounds = canvas.value?.getBoundingClientRect()
+    const buildingId = bounds ? world?.pickBuilding(event.clientX, event.clientY, bounds) : null
+    if (buildingId !== null && buildingId !== undefined) {
+      world?.hidePreview()
+      emit('select', buildingId)
+    } else if (props.selectedTool) {
+      emit('build', end)
+    }
   }
   handledPointerClick = true
   pointerStart = null
@@ -173,6 +186,7 @@ onMounted(async () => {
     if (!canvas.value || disposed) return
     world = new WorldRenderer(canvas.value)
     syncWorld()
+    syncSelection()
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => world?.resize())
       resizeObserver.observe(canvas.value)
@@ -183,6 +197,7 @@ onMounted(async () => {
 })
 
 watch(() => [props.seed, props.buildings.length, props.battleVisible, props.stressMode], syncWorld)
+watch(() => props.selectedBuildingId, syncSelection)
 
 onBeforeUnmount(() => {
   disposed = true

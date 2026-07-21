@@ -2,9 +2,11 @@ import {
   addressCrisis,
   advanceGame,
   createGame,
+  demolishBuilding,
   dismissThreat,
   placeBuilding,
   placePath,
+  repairBuilding,
   resolveRaid,
   revealThreat,
 } from '../src/game/simulation'
@@ -35,6 +37,7 @@ describe('settlement simulation', () => {
     expect(occupied.size).toBe(state.buildings.length)
     expect(state.buildings.filter((building) => building.kind === 'house').length).toBeGreaterThanOrEqual(8)
     expect(state.buildings.filter((building) => building.kind === 'wall').length).toBeGreaterThanOrEqual(4)
+    expect(state.buildings.some((building) => building.kind === 'watchtower' && building.health < 100)).toBe(true)
   })
 
   it('places a building and charges its cost once', () => {
@@ -73,6 +76,51 @@ describe('settlement simulation', () => {
     const result = placePath(state, 'road', [{ x: 10, y: 10 }, { x: 32, y: 31 }])
 
     expect(result).toEqual({ ok: false, reason: 'Здесь уже стоит постройка' })
+    expect(state).toEqual(before)
+  })
+
+  it('repairs a damaged building and charges only the missing share of materials', () => {
+    const state = createGame('repair')
+    const house = state.buildings.find((building) => building.kind === 'house')!
+    house.health = 50
+
+    const result = repairBuilding(state, house.id)
+
+    expect(result).toEqual({ ok: true, cost: { wood: 4, stone: 0, silver: 0 } })
+    expect(house.health).toBe(100)
+    expect(state.resources.wood).toBe(116)
+    expect(state.events.at(-1)?.title).toBe('Постройка восстановлена')
+  })
+
+  it('does not partially repair a building when materials are missing', () => {
+    const state = createGame('failed-repair')
+    const granary = state.buildings.find((building) => building.kind === 'granary')!
+    granary.health = 25
+    state.resources.wood = 0
+    const before = structuredClone(state)
+
+    expect(repairBuilding(state, granary.id)).toEqual({ ok: false, reason: 'Не хватает материалов для ремонта' })
+    expect(state).toEqual(before)
+  })
+
+  it('demolishes a building and returns a modest salvage', () => {
+    const state = createGame('demolition')
+    const house = state.buildings.find((building) => building.kind === 'house')!
+
+    const result = demolishBuilding(state, house.id)
+
+    expect(result).toEqual({ ok: true, salvage: { wood: 2, stone: 0, silver: 0 } })
+    expect(state.buildings.some((building) => building.id === house.id)).toBe(false)
+    expect(state.resources.wood).toBe(122)
+    expect(state.events.at(-1)?.title).toBe('Участок расчищен')
+  })
+
+  it('protects the main building from demolition without mutating state', () => {
+    const state = createGame('protected-palace')
+    const townHall = state.buildings.find((building) => building.kind === 'townHall')!
+    const before = structuredClone(state)
+
+    expect(demolishBuilding(state, townHall.id)).toEqual({ ok: false, reason: 'Главное здание нельзя разобрать' })
     expect(state).toEqual(before)
   })
 

@@ -48,6 +48,11 @@ export class WorldRenderer {
   private readonly metrics: SceneMetrics
   private worldMeshes: THREE.InstancedMesh[] = []
   private readonly preview: THREE.Mesh
+  private readonly pickerGeometry = new THREE.BoxGeometry(1, 1, 1)
+  private readonly pickerMaterial = new THREE.MeshBasicMaterial({ visible: false })
+  private readonly selectionOutline: THREE.LineSegments
+  private buildingPickers: THREE.Mesh[] = []
+  private selectedBuildingId: number | null = null
   private animationFrame = 0
   private needsRender = true
   private seed = ''
@@ -90,6 +95,15 @@ export class WorldRenderer {
     this.preview.visible = false
     this.preview.renderOrder = 20
     this.scene.add(this.preview)
+    const outlineSource = new THREE.BoxGeometry(1, 1, 1)
+    this.selectionOutline = new THREE.LineSegments(
+      new THREE.EdgesGeometry(outlineSource),
+      new THREE.LineBasicMaterial({ color: 0xf2c65d, depthTest: false, transparent: true, opacity: 0.95 }),
+    )
+    outlineSource.dispose()
+    this.selectionOutline.visible = false
+    this.selectionOutline.renderOrder = 30
+    this.scene.add(this.selectionOutline)
     this.resize()
     this.animate()
   }
@@ -117,6 +131,28 @@ export class WorldRenderer {
 
   pickGrid(clientX: number, clientY: number, bounds: DOMRect): { x: number; y: number } | null {
     return this.picking.pick(clientX, clientY, bounds)
+  }
+
+  pickBuilding(clientX: number, clientY: number, bounds: DOMRect): number | null {
+    const hit = this.picking.pickObject(clientX, clientY, bounds, this.buildingPickers)
+    return typeof hit?.userData.buildingId === 'number' ? hit.userData.buildingId : null
+  }
+
+  setSelectedBuilding(buildingId: number | null): void {
+    this.selectedBuildingId = buildingId
+    const picker = buildingId === null
+      ? undefined
+      : this.buildingPickers.find((item) => item.userData.buildingId === buildingId)
+    if (!picker) {
+      this.selectionOutline.visible = false
+      this.invalidate()
+      return
+    }
+    this.selectionOutline.position.copy(picker.position)
+    this.selectionOutline.scale.copy(picker.scale).multiplyScalar(1.04)
+    this.selectionOutline.visible = true
+    this.selectionOutline.updateMatrixWorld()
+    this.invalidate()
   }
 
   showPreview(kind: Building['kind'], point: { x: number; y: number }): boolean {
@@ -181,6 +217,10 @@ export class WorldRenderer {
     this.disposeWorld()
     this.preview.geometry.dispose()
     ;(this.preview.material as THREE.Material).dispose()
+    this.pickerGeometry.dispose()
+    this.pickerMaterial.dispose()
+    this.selectionOutline.geometry.dispose()
+    ;(this.selectionOutline.material as THREE.Material).dispose()
     this.renderer.dispose()
   }
 
@@ -191,6 +231,14 @@ export class WorldRenderer {
     for (const building of this.buildings) {
       const model = generateBuilding(building.kind, `${this.seed}:${building.id}`, byzantineMacedonian)
       batch.add(model, new THREE.Vector3(building.x - model.anchor[0], 1.5, building.y - model.anchor[2]))
+      const height = Math.max(0.22, ...model.voxels.map((voxel) => voxel.y + (voxel.scale?.[1] ?? 1) / 2))
+      const picker = new THREE.Mesh(this.pickerGeometry, this.pickerMaterial)
+      picker.position.set(building.x - 0.5, 1.5 + height / 2, building.y - 0.5)
+      picker.scale.set(Math.max(0.8, model.footprint[0]), height, Math.max(0.8, model.footprint[1]))
+      picker.userData.buildingId = building.id
+      picker.updateMatrixWorld()
+      this.buildingPickers.push(picker)
+      this.scene.add(picker)
     }
     if (this.battleVisible) {
       const count = this.stressMode ? 150 : 18
@@ -205,6 +253,7 @@ export class WorldRenderer {
       this.visibleUnits = 0
     }
     this.worldMeshes = batch.commit(this.scene)
+    this.setSelectedBuilding(this.selectedBuildingId)
   }
 
   private disposeWorld(): void {
@@ -215,6 +264,8 @@ export class WorldRenderer {
       materials.forEach((material) => material.dispose())
     }
     this.worldMeshes = []
+    for (const picker of this.buildingPickers) this.scene.remove(picker)
+    this.buildingPickers = []
   }
 
   private invalidate(): void {

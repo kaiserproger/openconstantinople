@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, reactive, ref } from 'vue'
-import { Shield } from '@lucide/vue'
+import { Hammer, Shield, Trash2 } from '@lucide/vue'
 import EdgeDrawer from './components/EdgeDrawer.vue'
 import GameWorld from './components/GameWorld.vue'
 import ModeBar from './components/ModeBar.vue'
@@ -9,8 +9,10 @@ import {
   addressCrisis,
   advanceGame,
   createGame,
+  demolishBuilding,
   placeBuilding,
   placePath,
+  repairBuilding,
   revealThreat,
   resolveRaid,
   type BuildingKind,
@@ -19,13 +21,14 @@ import { decodeSave, encodeSave } from './game/persistence'
 import { byzantineMacedonian } from './presets'
 
 type Mode = 'streets' | 'quarters' | 'production' | 'defense'
-type Drawer = 'chronicle' | 'court' | 'intel'
+type Drawer = 'chronicle' | 'court' | 'intel' | 'object'
 
 const game = reactive(createGame('heather-17'))
 revealThreat(game, 'raiders', 85)
 const selectedTool = ref<BuildingKind | null>('road')
 const mode = ref<Mode>('quarters')
 const activeDrawer = ref<Drawer | null>(null)
+const selectedBuildingId = ref<number | null>(null)
 const speed = ref<0 | 1 | 4>(1)
 const notice = ref('Выберите постройку и укажите место на карте')
 const battleVisible = ref(false)
@@ -34,6 +37,7 @@ const stressMode = new URLSearchParams(window.location.search).has('stress')
 let worldCounter = 1
 
 const primaryThreat = computed(() => game.threats.find((threat) => threat.status !== 'disbanded'))
+const selectedBuilding = computed(() => game.buildings.find((building) => building.id === selectedBuildingId.value) ?? null)
 const topResources = computed(() => ({
   ...game.resources,
   people: game.people,
@@ -48,10 +52,12 @@ function chooseSpeed(value: 0 | 1 | 4): void {
 function chooseMode(value: Mode): void {
   mode.value = value
   selectedTool.value = null
+  closeObjectDrawer()
 }
 
 function chooseTool(kind: BuildingKind): void {
   selectedTool.value = kind
+  closeObjectDrawer()
   notice.value = `${byzantineMacedonian.buildings[kind]} · выберите место`
 }
 
@@ -81,7 +87,47 @@ function defendCity(): void {
 }
 
 function toggleDrawer(drawer: Drawer): void {
+  if (activeDrawer.value === 'object') selectedBuildingId.value = null
   activeDrawer.value = activeDrawer.value === drawer ? null : drawer
+}
+
+function closeObjectDrawer(): void {
+  if (activeDrawer.value === 'object') activeDrawer.value = null
+  selectedBuildingId.value = null
+}
+
+function closeDrawer(): void {
+  closeObjectDrawer()
+  activeDrawer.value = null
+}
+
+function selectBuilding(buildingId: number): void {
+  const building = game.buildings.find((item) => item.id === buildingId)
+  if (!building) return
+  selectedTool.value = null
+  selectedBuildingId.value = buildingId
+  activeDrawer.value = 'object'
+  notice.value = `${byzantineMacedonian.buildings[building.kind]} · объект выбран`
+}
+
+function cancelInteraction(): void {
+  const hadObject = selectedBuildingId.value !== null
+  selectedTool.value = null
+  closeObjectDrawer()
+  notice.value = hadObject ? 'Выбор объекта снят' : 'Строительство отменено'
+}
+
+function repairSelected(): void {
+  if (!selectedBuilding.value) return
+  const result = repairBuilding(game, selectedBuilding.value.id)
+  notice.value = result.ok ? 'Ремонт завершён' : result.reason
+}
+
+function demolishSelected(): void {
+  if (!selectedBuilding.value) return
+  const result = demolishBuilding(game, selectedBuilding.value.id)
+  notice.value = result.ok ? 'Участок расчищен, пригодные материалы возвращены' : result.reason
+  if (result.ok) closeObjectDrawer()
 }
 
 function handleCrisis(crisisId: number): void {
@@ -109,6 +155,7 @@ function loadSettlement(): void {
     return
   }
   Object.assign(game, result.state)
+  closeObjectDrawer()
   battleVisible.value = false
   notice.value = 'Летопись княжества восстановлена'
   void nextTick(() => gameWorld.value?.restoreCamera(result.meta.camera))
@@ -118,6 +165,7 @@ function newWorld(): void {
   const next = createGame(`porphyry-${17 + worldCounter}`)
   worldCounter += 1
   Object.assign(game, next)
+  closeObjectDrawer()
   revealThreat(game, worldCounter % 2 === 0 ? 'scouts' : 'raiders', 34 + worldCounter * 7)
   battleVisible.value = false
   notice.value = `Открыта новая фема · ${game.map.seed}`
@@ -137,11 +185,13 @@ onUnmounted(() => window.clearInterval(timer))
         :seed="game.map.seed"
         :buildings="game.buildings"
         :selected-tool="selectedTool"
+        :selected-building-id="selectedBuildingId"
         :battle-visible="battleVisible"
         :stress-mode="stressMode"
         @build="buildAt"
         @build-path="buildPath"
-        @cancel="selectedTool = null; notice = 'Строительство отменено'"
+        @select="selectBuilding"
+        @cancel="cancelInteraction"
       />
       <div class="world-vignette"></div>
       <div v-if="primaryThreat" class="raid-marker">
@@ -167,20 +217,20 @@ onUnmounted(() => window.clearInterval(timer))
       @toggle-drawer="toggleDrawer"
     />
 
-    <EdgeDrawer v-if="activeDrawer === 'chronicle'" title="Летопись" @close="activeDrawer = null">
+    <EdgeDrawer v-if="activeDrawer === 'chronicle'" title="Летопись" @close="closeDrawer">
       <article v-for="event in [...game.events].reverse().slice(0, 8)" :key="event.id" :class="['drawer-entry', event.tone]">
         <time>{{ event.day }} день</time><strong>{{ event.title }}</strong><p>{{ event.text }}</p>
       </article>
     </EdgeDrawer>
 
-    <EdgeDrawer v-if="activeDrawer === 'intel'" title="Разведка" @close="activeDrawer = null">
+    <EdgeDrawer v-if="activeDrawer === 'intel'" title="Разведка" @close="closeDrawer">
       <div class="threat-summary"><Shield :size="28" /><strong>{{ primaryThreat?.strength ?? 0 }}</strong><span>Северо-восток</span></div>
       <h3>{{ byzantineMacedonian.threats[0] }}</h3>
       <p>Передовые разъезды движутся к дороге на Порфирополис. Состав войска уточняется.</p>
       <ul class="political-actors"><li v-for="actor in byzantineMacedonian.threats" :key="actor">{{ actor }}</li></ul>
     </EdgeDrawer>
 
-    <EdgeDrawer v-if="activeDrawer === 'court'" title="Двор стратега" @close="activeDrawer = null">
+    <EdgeDrawer v-if="activeDrawer === 'court'" title="Двор стратега" @close="closeDrawer">
       <div class="court-balance">
         <div><span>Порядок</span><strong>{{ game.order }}</strong><i><b :style="{ width: `${game.order}%` }"></b></i></div>
         <div><span>Легитимность</span><strong>{{ game.legitimacy }}</strong><i><b :style="{ width: `${game.legitimacy}%` }"></b></i></div>
@@ -192,6 +242,32 @@ onUnmounted(() => window.clearInterval(timer))
         <small>{{ byzantineMacedonian.crises[crisis.kind].cost }}</small>
         <button data-action="address-crisis" @click="handleCrisis(crisis.id)">{{ byzantineMacedonian.crises[crisis.kind].action }}</button>
       </article>
+    </EdgeDrawer>
+
+    <EdgeDrawer
+      v-if="activeDrawer === 'object' && selectedBuilding"
+      :title="byzantineMacedonian.buildings[selectedBuilding.kind]"
+      @close="closeDrawer"
+    >
+      <section class="object-card" data-testid="object-card">
+        <div class="object-seal"><span>{{ selectedBuilding.id }}</span><small>участок</small></div>
+        <dl>
+          <div><dt>Состояние</dt><dd>{{ selectedBuilding.health }}%</dd></div>
+          <div><dt>Готовность</dt><dd>{{ Math.round(selectedBuilding.progress * 100) }}%</dd></div>
+          <div><dt>Координаты</dt><dd>{{ selectedBuilding.x }} · {{ selectedBuilding.y }}</dd></div>
+        </dl>
+        <div class="condition-track"><i :style="{ width: `${selectedBuilding.health}%` }"></i></div>
+        <p>Расход ремонта зависит от повреждений. При разборе четверть пригодных материалов возвращается на склад.</p>
+        <div class="object-actions">
+          <button data-action="repair-building" :disabled="selectedBuilding.health >= 100" @click="repairSelected">
+            <Hammer :size="17" /><span>Ремонтировать</span>
+          </button>
+          <button data-action="demolish-building" :disabled="selectedBuilding.kind === 'townHall'" @click="demolishSelected">
+            <Trash2 :size="17" /><span>Разобрать</span>
+          </button>
+        </div>
+        <small v-if="selectedBuilding.kind === 'townHall'" class="protected-note">Дворец — неразбираемый центр управления.</small>
+      </section>
     </EdgeDrawer>
 
     <ModeBar
