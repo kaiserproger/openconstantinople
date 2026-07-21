@@ -54,7 +54,7 @@ it.each(buildingKinds)('generates a non-empty deterministic %s', (kind) => {
   const first = generateBuilding(kind, 'building-17', byzantineMacedonian)
   const second = generateBuilding(kind, 'building-17', byzantineMacedonian)
   expect(first).toEqual(second)
-  expect(first.voxels.length).toBeGreaterThan(kind === 'road' ? 3 : 18)
+  expect(first.voxels.length).toBeGreaterThan(kind === 'road' ? 3 : kind === 'wall' ? 7 : 18)
   expect(first.voxels.every((voxel) => Number.isFinite(voxel.x + voxel.y + voxel.z))).toBe(true)
 })
 
@@ -65,6 +65,18 @@ it('gives civic architecture a stronger silhouette than housing', () => {
     Math.max(...house.voxels.map((voxel) => voxel.y)),
   )
   expect(palace.voxels.filter((voxel) => voxel.material === 'gold').length).toBeGreaterThan(0)
+})
+
+it('uses cell-sized linear pieces and semantic details instead of oversized slabs', () => {
+  const road = generateBuilding('road', 'same', byzantineMacedonian)
+  const wall = generateBuilding('wall', 'same', byzantineMacedonian)
+  const market = generateBuilding('market', 'same', byzantineMacedonian)
+  const smithy = generateBuilding('smithy', 'same', byzantineMacedonian)
+
+  expect(road.footprint).toEqual([1, 1])
+  expect(wall.footprint).toEqual([1, 1])
+  expect(market.voxels.some((voxel) => voxel.material === 'water')).toBe(true)
+  expect(smithy.voxels.some((voxel) => voxel.material === 'iron')).toBe(true)
 })
 
 it('distinguishes tagma and raider by silhouette and faction material', () => {

@@ -89,6 +89,62 @@ const BUILD_COSTS: Record<BuildingKind, { wood: number; stone: number; silver: n
   townHall: { wood: 36, stone: 30, silver: 20 },
 }
 
+export const BUILDING_FOOTPRINTS: Record<BuildingKind, readonly [number, number]> = {
+  road: [1, 1],
+  house: [5, 4],
+  farm: [7, 6],
+  lumberCamp: [6, 5],
+  quarry: [6, 5],
+  granary: [6, 4],
+  market: [7, 6],
+  smithy: [5, 4],
+  barracks: [8, 6],
+  watchtower: [4, 4],
+  wall: [1, 1],
+  townHall: [10, 8],
+}
+
+function footprintsOverlap(
+  left: Pick<Building, 'kind' | 'x' | 'y'>,
+  right: Pick<Building, 'kind' | 'x' | 'y'>,
+  clearance = 0,
+): boolean {
+  const [leftWidth, leftDepth] = BUILDING_FOOTPRINTS[left.kind]
+  const [rightWidth, rightDepth] = BUILDING_FOOTPRINTS[right.kind]
+  return Math.abs(left.x - right.x) < (leftWidth + rightWidth) / 2 + clearance
+    && Math.abs(left.y - right.y) < (leftDepth + rightDepth) / 2 + clearance
+}
+
+function isInsideMap(kind: BuildingKind, point: Point): boolean {
+  const [width, depth] = BUILDING_FOOTPRINTS[kind]
+  return point.x - width / 2 >= 0
+    && point.x + width / 2 <= 64
+    && point.y - depth / 2 >= 0
+    && point.y + depth / 2 <= 64
+}
+
+function hasPlacementCollision(buildings: Building[], kind: BuildingKind, point: Point): boolean {
+  const candidate = { kind, ...point }
+  return buildings.some((building) => {
+    const wall = kind === 'wall' ? candidate : building.kind === 'wall' ? building : null
+    const tower = kind === 'watchtower' ? candidate : building.kind === 'watchtower' ? building : null
+    if (wall && tower) {
+      const [towerWidth, towerDepth] = BUILDING_FOOTPRINTS.watchtower
+      const deltaX = Math.abs(wall.x - tower.x)
+      const deltaY = Math.abs(wall.y - tower.y)
+      const onVerticalFace = deltaX === towerWidth / 2 && deltaY <= towerDepth / 2
+      const onHorizontalFace = deltaY === towerDepth / 2 && deltaX <= towerWidth / 2
+      if (onVerticalFace || onHorizontalFace) return false
+    }
+    const linear = kind === 'road' || kind === 'wall' || building.kind === 'road' || building.kind === 'wall'
+    return footprintsOverlap(candidate, building, linear ? 0 : 1)
+  })
+}
+
+export function canPlaceAt(buildings: Building[], kind: BuildingKind, point: Point): boolean {
+  return isInsideMap(kind, point) && !hasPlacementCollision(buildings, kind, point)
+}
+
 function hashSeed(seed: string): () => number {
   let hash = 2166136261
   for (const character of seed) {
@@ -132,16 +188,27 @@ function createMap(seed: string): ValleyMap {
 }
 
 export function createGame(seed: string): GameState {
-  const urbanNucleus: Building[] = [
-    ['townHall', 32, 31], ['granary', 42, 31], ['market', 32, 42], ['smithy', 41, 40],
-    ['house', 20, 22], ['house', 27, 20], ['house', 38, 20], ['house', 45, 23],
-    ['house', 20, 31], ['house', 45, 32], ['house', 20, 40], ['house', 26, 45],
-    ['house', 38, 46], ['house', 47, 42], ['farm', 51, 27], ['farm', 52, 36],
-    ['farm', 16, 47], ['lumberCamp', 13, 27], ['quarry', 51, 48], ['barracks', 18, 53],
-    ['watchtower', 14, 14], ['watchtower', 50, 14], ['watchtower', 14, 52], ['watchtower', 50, 52],
-    ['wall', 20, 13], ['wall', 30, 13], ['wall', 40, 13], ['wall', 20, 54],
-    ['wall', 30, 54], ['wall', 40, 54], ['road', 26, 38], ['road', 30, 38], ['road', 34, 38],
-  ].map(([kind, x, y], index) => ({
+  const landmarks: Array<[BuildingKind, number, number]> = [
+    ['townHall', 32, 31], ['granary', 44, 18], ['market', 18, 31], ['smithy', 45, 29],
+    ['house', 16, 18], ['house', 24, 18], ['house', 32, 18], ['house', 16, 41],
+    ['house', 24, 41], ['house', 33, 43], ['house', 43, 42], ['house', 50, 39],
+    ['farm', 14, 49], ['farm', 49, 49], ['lumberCamp', 13, 24], ['quarry', 52, 23],
+    ['barracks', 29, 50], ['watchtower', 9, 9], ['watchtower', 55, 9],
+    ['watchtower', 9, 55], ['watchtower', 55, 55],
+  ]
+  const walls: Array<[BuildingKind, number, number]> = []
+  for (let x = 11; x <= 53; x += 1) {
+    if (x < 38 || x > 40) walls.push(['wall', x, 7], ['wall', x, 57])
+  }
+  for (let y = 11; y <= 53; y += 1) {
+    if (y < 35 || y > 37) walls.push(['wall', 7, y], ['wall', 57, y])
+  }
+  const roads: Array<[BuildingKind, number, number]> = []
+  for (let x = 7; x <= 57; x += 1) roads.push(['road', x, 36])
+  for (let y = 7; y <= 25; y += 1) roads.push(['road', 39, y])
+  for (let y = 37; y <= 57; y += 1) roads.push(['road', 39, y])
+
+  const urbanNucleus: Building[] = [...landmarks, ...walls, ...roads].map(([kind, x, y], index) => ({
     id: index + 1,
     kind: kind as BuildingKind,
     x: x as number,
@@ -149,6 +216,7 @@ export function createGame(seed: string): GameState {
     progress: 1,
     health: kind === 'watchtower' ? 72 : 100,
   }))
+  const chronicleId = urbanNucleus.length + 1
   return {
     tick: 0,
     day: 1,
@@ -164,9 +232,9 @@ export function createGame(seed: string): GameState {
     threats: [],
     crises: [],
     events: [
-      { id: 34, day: 1, title: 'Новая летопись', text: 'Порфирополис встречает осень.', tone: 'neutral' },
+      { id: chronicleId, day: 1, title: 'Новая летопись', text: 'Порфирополис встречает осень.', tone: 'neutral' },
     ],
-    nextId: 35,
+    nextId: chronicleId + 1,
   }
 }
 
@@ -174,6 +242,8 @@ export function placeBuilding(state: GameState, kind: BuildingKind, point: Point
   if (state.buildings.some((building) => building.x === point.x && building.y === point.y)) {
     return { ok: false, reason: 'Здесь уже стоит постройка' }
   }
+  if (!isInsideMap(kind, point)) return { ok: false, reason: 'Постройка выходит за границы карты' }
+  if (!canPlaceAt(state.buildings, kind, point)) return { ok: false, reason: 'Постройкам не хватает места' }
   const cost = BUILD_COSTS[kind]
   if (state.resources.wood < cost.wood || state.resources.stone < cost.stone || state.resources.silver < cost.silver) {
     return { ok: false, reason: 'Не хватает припасов' }
@@ -196,7 +266,7 @@ export function placePath(
   if (unique.some((point) => point.x < 0 || point.x > 63 || point.y < 0 || point.y > 63)) {
     return { ok: false, reason: 'Путь выходит за границы карты' }
   }
-  if (unique.some((point) => state.buildings.some((building) => building.x === point.x && building.y === point.y))) {
+  if (unique.some((point) => hasPlacementCollision(state.buildings, kind, point))) {
     return { ok: false, reason: 'Здесь уже стоит постройка' }
   }
   const cost = BUILD_COSTS[kind]

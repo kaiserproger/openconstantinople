@@ -39,9 +39,28 @@ describe('Openfront shell', () => {
     await house.trigger('click')
     expect(house.classes()).toContain('active')
 
-    await wrapper.get('[data-testid="voxel-world"]').trigger('click', { clientX: 560, clientY: 360 })
+    await wrapper.get('[data-testid="voxel-world"]').trigger('click', { clientX: 500, clientY: 100 })
 
     expect(wrapper.get('[data-resource="wood"]').text()).toContain('112')
+  })
+
+  it('starts in navigation mode and explains line construction before a drag can build', async () => {
+    const wrapper = mount(App)
+
+    expect(wrapper.find('[data-testid="construction-hint"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-tool')).toBe('none')
+
+    await wrapper.get('[data-mode="streets"]').trigger('click')
+    await wrapper.get('[data-kind="road"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="construction-hint"]').text()).toContain('Тяните ЛКМ по прямой')
+    expect(wrapper.get('[data-testid="construction-hint"]').text()).toContain('Месса')
+
+    const canvas = wrapper.get('[data-testid="voxel-world"]')
+    await canvas.trigger('pointerdown', { clientX: 100, clientY: 100, pointerId: 1 })
+    expect(canvas.classes()).toContain('line-building')
+    await canvas.trigger('pointercancel')
+    expect(canvas.classes()).not.toContain('line-building')
   })
 
   it('opens a real building card and applies object commands to the simulation', async () => {

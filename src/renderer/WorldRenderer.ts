@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { Building } from '../game/simulation'
+import { canPlaceAt, type Building } from '../game/simulation'
 import { byzantineMacedonian } from '../presets'
 import { generateBuilding } from '../voxel/buildings'
 import { generateTerrain } from '../voxel/terrain'
@@ -11,6 +11,7 @@ import { SceneMetrics } from './SceneMetrics'
 import { VoxelBatch } from './VoxelBatch'
 
 const MAX_PIXEL_RATIO = 1.5
+const MAX_PATH_PREVIEW = 64
 
 function terrainModel(seed: string): VoxelModel {
   const terrain = generateTerrain(seed)
@@ -48,6 +49,7 @@ export class WorldRenderer {
   private readonly metrics: SceneMetrics
   private worldMeshes: THREE.InstancedMesh[] = []
   private readonly preview: THREE.Mesh
+  private readonly pathPreview: THREE.InstancedMesh
   private readonly pickerGeometry = new THREE.BoxGeometry(1, 1, 1)
   private readonly pickerMaterial = new THREE.MeshBasicMaterial({ visible: false })
   private readonly selectionOutline: THREE.LineSegments
@@ -95,6 +97,15 @@ export class WorldRenderer {
     this.preview.visible = false
     this.preview.renderOrder = 20
     this.scene.add(this.preview)
+    this.pathPreview = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({ color: 0xffd66b, transparent: true, opacity: 0.84, depthTest: false, depthWrite: false }),
+      MAX_PATH_PREVIEW,
+    )
+    this.pathPreview.count = 0
+    this.pathPreview.visible = false
+    this.pathPreview.renderOrder = 21
+    this.scene.add(this.pathPreview)
     const outlineSource = new THREE.BoxGeometry(1, 1, 1)
     this.selectionOutline = new THREE.LineSegments(
       new THREE.EdgesGeometry(outlineSource),
@@ -156,7 +167,8 @@ export class WorldRenderer {
   }
 
   showPreview(kind: Building['kind'], point: { x: number; y: number }): boolean {
-    const valid = !this.buildings.some((building) => building.x === point.x && building.y === point.y)
+    this.pathPreview.visible = false
+    const valid = this.canPlace(kind, point)
     const model = generateBuilding(kind, `preview:${kind}`, byzantineMacedonian)
     const height = Math.max(0.22, ...model.voxels.map((voxel) => voxel.y + (voxel.scale?.[1] ?? 1) / 2))
     this.preview.position.set(point.x, 1.5 + height / 2, point.y)
@@ -169,8 +181,31 @@ export class WorldRenderer {
     return valid
   }
 
+  showPathPreview(kind: 'road' | 'wall', points: Array<{ x: number; y: number }>): boolean {
+    this.preview.visible = false
+    const visiblePoints = points.slice(0, MAX_PATH_PREVIEW)
+    const valid = visiblePoints.every((point) => this.canPlace(kind, point))
+    const model = generateBuilding(kind, `path-preview:${kind}`, byzantineMacedonian)
+    const height = Math.max(0.16, ...model.voxels.map((voxel) => voxel.y + (voxel.scale?.[1] ?? 1) / 2))
+    const matrix = new THREE.Matrix4()
+    const quaternion = new THREE.Quaternion()
+    const scale = new THREE.Vector3(0.78, Math.max(0.28, height), 0.78)
+    visiblePoints.forEach((point, index) => {
+      matrix.compose(new THREE.Vector3(point.x, 1.5 + height / 2, point.y), quaternion, scale)
+      this.pathPreview.setMatrixAt(index, matrix)
+    })
+    this.pathPreview.count = visiblePoints.length
+    this.pathPreview.instanceMatrix.needsUpdate = true
+    this.pathPreview.computeBoundingSphere()
+    ;(this.pathPreview.material as THREE.MeshBasicMaterial).color.setHex(valid ? 0xffd66b : 0xff6470)
+    this.pathPreview.visible = visiblePoints.length > 0
+    this.invalidate()
+    return valid
+  }
+
   hidePreview(): void {
     this.preview.visible = false
+    this.pathPreview.visible = false
     this.invalidate()
   }
 
@@ -217,6 +252,8 @@ export class WorldRenderer {
     this.disposeWorld()
     this.preview.geometry.dispose()
     ;(this.preview.material as THREE.Material).dispose()
+    this.pathPreview.geometry.dispose()
+    ;(this.pathPreview.material as THREE.Material).dispose()
     this.pickerGeometry.dispose()
     this.pickerMaterial.dispose()
     this.selectionOutline.geometry.dispose()
@@ -233,7 +270,7 @@ export class WorldRenderer {
       batch.add(model, new THREE.Vector3(building.x - model.anchor[0], 1.5, building.y - model.anchor[2]))
       const height = Math.max(0.22, ...model.voxels.map((voxel) => voxel.y + (voxel.scale?.[1] ?? 1) / 2))
       const picker = new THREE.Mesh(this.pickerGeometry, this.pickerMaterial)
-      picker.position.set(building.x - 0.5, 1.5 + height / 2, building.y - 0.5)
+      picker.position.set(building.x, 1.5 + height / 2, building.y)
       picker.scale.set(Math.max(0.8, model.footprint[0]), height, Math.max(0.8, model.footprint[1]))
       picker.userData.buildingId = building.id
       picker.updateMatrixWorld()
@@ -266,6 +303,10 @@ export class WorldRenderer {
     this.worldMeshes = []
     for (const picker of this.buildingPickers) this.scene.remove(picker)
     this.buildingPickers = []
+  }
+
+  private canPlace(kind: Building['kind'], point: { x: number; y: number }): boolean {
+    return canPlaceAt(this.buildings, kind, point)
   }
 
   private invalidate(): void {

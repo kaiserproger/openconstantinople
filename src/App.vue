@@ -22,15 +22,16 @@ import { byzantineMacedonian } from './presets'
 
 type Mode = 'streets' | 'quarters' | 'production' | 'defense'
 type Drawer = 'chronicle' | 'court' | 'intel' | 'object'
+const modeNames: Record<Mode, string> = { streets: 'Улицы', quarters: 'Кварталы', production: 'Производство', defense: 'Оборона' }
 
 const game = reactive(createGame('heather-17'))
 revealThreat(game, 'raiders', 85)
-const selectedTool = ref<BuildingKind | null>('road')
+const selectedTool = ref<BuildingKind | null>(null)
 const mode = ref<Mode>('quarters')
 const activeDrawer = ref<Drawer | null>(null)
 const selectedBuildingId = ref<number | null>(null)
 const speed = ref<0 | 1 | 4>(1)
-const notice = ref('Выберите постройку и укажите место на карте')
+const notice = ref('Выберите раздел строительства или осмотрите город')
 const battleVisible = ref(false)
 const gameWorld = ref<InstanceType<typeof GameWorld> | null>(null)
 const stressMode = new URLSearchParams(window.location.search).has('stress')
@@ -38,6 +39,13 @@ let worldCounter = 1
 
 const primaryThreat = computed(() => game.threats.find((threat) => threat.status !== 'disbanded'))
 const selectedBuilding = computed(() => game.buildings.find((building) => building.id === selectedBuildingId.value) ?? null)
+const constructionHint = computed(() => {
+  if (!selectedTool.value) return null
+  const name = byzantineMacedonian.buildings[selectedTool.value]
+  return selectedTool.value === 'road' || selectedTool.value === 'wall'
+    ? `${name} · Тяните ЛКМ по прямой, отпустите для строительства · Esc отмена`
+    : `${name} · ЛКМ поставить · перетаскивание перемещает карту · Esc отмена`
+})
 const topResources = computed(() => ({
   ...game.resources,
   people: game.people,
@@ -53,16 +61,21 @@ function chooseMode(value: Mode): void {
   mode.value = value
   selectedTool.value = null
   closeObjectDrawer()
+  notice.value = `${modeNames[value]} · выберите инструмент`
 }
 
 function chooseTool(kind: BuildingKind): void {
   selectedTool.value = kind
   closeObjectDrawer()
-  notice.value = `${byzantineMacedonian.buildings[kind]} · выберите место`
+  notice.value = ''
 }
 
 function buildAt(point: { x: number; y: number }): void {
   if (!selectedTool.value) return
+  if (selectedTool.value === 'road' || selectedTool.value === 'wall') {
+    buildPath([point])
+    return
+  }
   const kind = selectedTool.value
   const result = placeBuilding(game, kind, point)
   notice.value = result.ok ? `${byzantineMacedonian.buildings[kind]} заложена` : result.reason
@@ -71,7 +84,11 @@ function buildAt(point: { x: number; y: number }): void {
 function buildPath(points: Array<{ x: number; y: number }>): void {
   if (selectedTool.value !== 'road' && selectedTool.value !== 'wall') return
   const result = placePath(game, selectedTool.value, points)
-  notice.value = result.ok ? `Завершено участков: ${result.placed}` : result.reason
+  notice.value = result.ok
+    ? selectedTool.value === 'road'
+      ? `Проложено клеток улицы: ${result.placed}`
+      : `Возведено секций стены: ${result.placed}`
+    : result.reason
 }
 
 function defendCity(): void {
@@ -186,6 +203,7 @@ onUnmounted(() => window.clearInterval(timer))
         :buildings="game.buildings"
         :selected-tool="selectedTool"
         :selected-building-id="selectedBuildingId"
+        :building-names="byzantineMacedonian.buildings"
         :battle-visible="battleVisible"
         :stress-mode="stressMode"
         @build="buildAt"
@@ -199,7 +217,8 @@ onUnmounted(() => window.clearInterval(timer))
         <div><strong>{{ byzantineMacedonian.threats[0] }}</strong><span>Конница · сила около {{ primaryThreat.strength }}</span></div>
       </div>
       <div class="town-label"><span>{{ byzantineMacedonian.cityName }}</span><i>Порядок {{ game.order }} · легитимность {{ game.legitimacy }}</i></div>
-      <div class="notice" data-testid="notice">{{ notice }}</div>
+      <div v-if="constructionHint" class="construction-hint" data-testid="construction-hint">{{ constructionHint }}</div>
+      <div v-if="notice" class="notice" data-testid="notice">{{ notice }}</div>
     </section>
 
     <TopHud

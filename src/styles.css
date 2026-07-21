@@ -24,8 +24,14 @@ button:focus-visible { outline: 2px solid #f0cf7c; outline-offset: 2px; }
 
 .game-shell { position: relative; width: 100vw; height: 100vh; min-width: 960px; min-height: 620px; overflow: hidden; background: #574b38; }
 .world { position: absolute; inset: 0; overflow: hidden; background: #6f644b; }
-.voxel-world { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: linear-gradient(#9c8b67,#66543c); touch-action: none; cursor: crosshair; }
+.voxel-world { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: linear-gradient(#9c8b67,#66543c); touch-action: none; cursor: grab; }
+.voxel-world:active { cursor: grabbing; }
+.voxel-world.placing { cursor: crosshair; }
+.voxel-world.line-building { cursor: cell; }
 .world-vignette { position: absolute; inset: 0; background: radial-gradient(circle at 52% 47%, transparent 51%, rgba(22,12,29,.36) 100%); pointer-events: none; }
+.building-tooltip { position: absolute; z-index: 14; display: grid; min-width: 118px; padding: 6px 8px; pointer-events: none; }
+.building-tooltip strong { color: #f0cf7c; font: 600 12px/1.1 'Alegreya', Georgia, serif; }
+.building-tooltip span { margin-top: 3px; color: #c3b4a1; font-size: 9px; }
 
 .period-frame { background: linear-gradient(180deg, rgba(53,26,70,.97), rgba(31,16,40,.98)); border: 1px solid var(--gold-dim); box-shadow: inset 0 0 0 1px #140b1a, inset 0 0 0 3px rgba(232,223,201,.08), 0 6px 18px rgba(0,0,0,.48); }
 .period-frame button { display: inline-grid; place-items: center; border: 1px outset #896f91; border-radius: 0; background: linear-gradient(#54385f,#302039); box-shadow: inset 0 0 0 1px rgba(232,223,201,.07); cursor: pointer; }
@@ -56,6 +62,7 @@ button:focus-visible { outline: 2px solid #f0cf7c; outline-offset: 2px; }
 .town-label span { font: 700 20px 'Alegreya', Georgia, serif; letter-spacing: .04em; }
 .town-label i { font-style: normal; font-size: 10px; color: #ddcfb3; }
 .notice { position: absolute; z-index: 15; left: 50%; bottom: 142px; transform: translateX(-50%); min-width: 240px; padding: 6px 12px; text-align: center; color: #eadbbd; background: rgba(31,16,40,.92); border: 1px solid #8c6f96; box-shadow: 0 4px 12px #0008; font-size: 11px; pointer-events: none; }
+.construction-hint { position: absolute; z-index: 15; left: 50%; bottom: 176px; transform: translateX(-50%); padding: 5px 11px; color: #f0d792; background: rgba(24,13,31,.92); border: 1px solid rgba(211,170,85,.7); box-shadow: 0 3px 12px #0008; font-size: 10px; letter-spacing: .025em; white-space: nowrap; pointer-events: none; }
 .renderer-recovery { position: absolute; z-index: 30; inset: 50% auto auto 50%; transform: translate(-50%,-50%); display: grid; gap: 12px; min-width: 280px; padding: 18px; text-align: center; color: var(--marble); background: var(--porphyry); border: 1px solid var(--gold); box-shadow: 0 12px 40px #000b; }
 .renderer-recovery strong { font: 600 16px 'Alegreya', serif; }
 .renderer-recovery button { height: 32px; color: var(--marble); background: #4c3158; border: 2px outset #92779d; }
@@ -68,6 +75,7 @@ button:focus-visible { outline: 2px solid #f0cf7c; outline-offset: 2px; }
 .rail-title { position: absolute; top: 7px; left: 10px; color: #d5b566; font: 600 11px 'Alegreya', Georgia, serif; letter-spacing: .08em; text-transform: uppercase; }
 .tool-rail button { min-width: 92px; padding: 8px 7px; display: flex; flex-direction: column; gap: 6px; }
 .tool-rail button span { max-width: 105px; font-size: 10px; line-height: 1.05; }
+.tool-rail button small { color: #a996aa; font-size: 8px; line-height: 1; text-transform: uppercase; letter-spacing: .05em; }
 .tool-rail button.active { box-shadow: inset 0 -4px 0 var(--gold), inset 0 4px 9px #160c1d; }
 .tool-rail .battle-command { margin-left: auto; min-width: 118px; color: #f2c4b0; border-color: #a75a61; background: linear-gradient(#66313e,#3a1d29); }
 

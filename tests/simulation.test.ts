@@ -1,4 +1,5 @@
 import {
+  BUILDING_FOOTPRINTS,
   addressCrisis,
   advanceGame,
   createGame,
@@ -40,30 +41,90 @@ describe('settlement simulation', () => {
     expect(state.buildings.some((building) => building.kind === 'watchtower' && building.health < 100)).toBe(true)
   })
 
+  it('lays out civic buildings with readable space between their full footprints', () => {
+    const state = createGame('metropolis')
+    const structures = state.buildings
+
+    for (let leftIndex = 0; leftIndex < structures.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < structures.length; rightIndex += 1) {
+        const left = structures[leftIndex]!
+        const right = structures[rightIndex]!
+        if ((left.kind === 'wall' && right.kind === 'watchtower') || (left.kind === 'watchtower' && right.kind === 'wall')) {
+          const wall = left.kind === 'wall' ? left : right
+          const tower = left.kind === 'watchtower' ? left : right
+          const deltaX = Math.abs(wall.x - tower.x)
+          const deltaY = Math.abs(wall.y - tower.y)
+          if ((deltaX === 2 && deltaY <= 2) || (deltaY === 2 && deltaX <= 2)) continue
+        }
+        const [leftWidth, leftDepth] = BUILDING_FOOTPRINTS[left.kind]
+        const [rightWidth, rightDepth] = BUILDING_FOOTPRINTS[right.kind]
+        const linear = left.kind === 'road' || left.kind === 'wall' || right.kind === 'road' || right.kind === 'wall'
+        const clearance = linear ? 0 : 1
+        const separated = Math.abs(left.x - right.x) >= (leftWidth + rightWidth) / 2 + clearance
+          || Math.abs(left.y - right.y) >= (leftDepth + rightDepth) / 2 + clearance
+        expect(separated, `${left.kind}#${left.id} overlaps ${right.kind}#${right.id}`).toBe(true)
+      }
+    }
+  })
+
+  it('starts with continuous orthogonal wall sections rather than isolated slabs', () => {
+    const state = createGame('fortifications')
+    const walls = state.buildings.filter((building) => building.kind === 'wall')
+    const cells = new Set(walls.map((wall) => `${wall.x}:${wall.y}`))
+
+    expect(walls.length).toBeGreaterThan(80)
+    for (const wall of walls) {
+      const neighbours = [
+        `${wall.x - 1}:${wall.y}`,
+        `${wall.x + 1}:${wall.y}`,
+        `${wall.x}:${wall.y - 1}`,
+        `${wall.x}:${wall.y + 1}`,
+      ]
+      expect(neighbours.some((cell) => cells.has(cell)), `isolated wall at ${wall.x}:${wall.y}`).toBe(true)
+    }
+    for (const tower of state.buildings.filter((building) => building.kind === 'watchtower')) {
+      const joinedFaces = walls.filter((wall) => {
+        const deltaX = Math.abs(wall.x - tower.x)
+        const deltaY = Math.abs(wall.y - tower.y)
+        return (deltaX === 2 && deltaY <= 2) || (deltaY === 2 && deltaX <= 2)
+      })
+      expect(joinedFaces.length, `tower at ${tower.x}:${tower.y} is not joined to walls`).toBeGreaterThanOrEqual(2)
+    }
+  })
+
   it('places a building and charges its cost once', () => {
     const state = createGame('building')
-    const result = placeBuilding(state, 'house', { x: 18, y: 22 })
+    const result = placeBuilding(state, 'house', { x: 20, y: 24 })
 
     expect(result.ok).toBe(true)
     expect(state.resources.wood).toBe(112)
-    expect(state.buildings.at(-1)).toMatchObject({ kind: 'house', x: 18, y: 22 })
+    expect(state.buildings.at(-1)).toMatchObject({ kind: 'house', x: 20, y: 24 })
   })
 
   it('rejects overlapping buildings without charging resources', () => {
     const state = createGame('building')
-    placeBuilding(state, 'house', { x: 18, y: 22 })
+    placeBuilding(state, 'house', { x: 20, y: 24 })
     const woodAfterFirst = state.resources.wood
 
-    const result = placeBuilding(state, 'granary', { x: 18, y: 22 })
+    const result = placeBuilding(state, 'granary', { x: 20, y: 24 })
 
     expect(result).toEqual({ ok: false, reason: 'Здесь уже стоит постройка' })
     expect(state.resources.wood).toBe(woodAfterFirst)
   })
 
+  it('rejects a building whose footprint clips an existing structure', () => {
+    const state = createGame('footprint')
+    state.buildings = [state.buildings.find((building) => building.kind === 'townHall')!]
+    const before = structuredClone(state)
+
+    expect(placeBuilding(state, 'house', { x: 39, y: 31 })).toEqual({ ok: false, reason: 'Постройкам не хватает места' })
+    expect(state).toEqual(before)
+  })
+
   it('places a dragged road atomically and charges only accepted cells', () => {
     const state = createGame('road')
     const roadsBefore = state.buildings.filter((building) => building.kind === 'road').length
-    const result = placePath(state, 'road', [{ x: 10, y: 10 }, { x: 11, y: 10 }, { x: 12, y: 10 }])
+    const result = placePath(state, 'road', [{ x: 20, y: 3 }, { x: 21, y: 3 }, { x: 22, y: 3 }])
 
     expect(result).toEqual({ ok: true, placed: 3 })
     expect(state.buildings.filter((building) => building.kind === 'road')).toHaveLength(roadsBefore + 3)

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { Building, BuildingKind, Point } from '../game/simulation'
+import { straightPath } from '../game/constructionPath'
 import type { CameraSnapshot } from '../renderer/CameraController'
 import type { WorldRenderer as WorldRendererType } from '../renderer/WorldRenderer'
 
@@ -9,6 +10,7 @@ const props = defineProps<{
   buildings: Building[]
   selectedTool: BuildingKind | null
   selectedBuildingId: number | null
+  buildingNames: Record<BuildingKind, string>
   battleVisible: boolean
   stressMode: boolean
 }>()
@@ -26,6 +28,10 @@ let world: WorldRendererType | null = null
 let resizeObserver: ResizeObserver | null = null
 let disposed = false
 const cameraState = reactive<CameraSnapshot>({ targetX: 32, targetZ: 32, zoom: 1, quarter: 0 })
+const pathDragging = ref(false)
+const hoveredBuildingId = ref<number | null>(null)
+const hoverPosition = reactive({ x: 0, y: 0 })
+const hoveredBuilding = computed(() => props.buildings.find((building) => building.id === hoveredBuildingId.value) ?? null)
 let pointerStart: { clientX: number; clientY: number; point: Point } | null = null
 let pointerLast: Point | null = null
 let handledPointerClick = false
@@ -54,32 +60,16 @@ function build(event: MouseEvent): void {
   }
   if (!canvas.value) return
   const bounds = canvas.value.getBoundingClientRect()
-  if (props.selectedTool) emit('build', world?.pickGrid(event.clientX, event.clientY, bounds) ?? fallbackPick(event, bounds))
+  if (!props.selectedTool) return
+  const point = world?.pickGrid(event.clientX, event.clientY, bounds) ?? fallbackPick(event, bounds)
+  if (props.selectedTool === 'road' || props.selectedTool === 'wall') emit('buildPath', [point])
+  else emit('build', point)
 }
 
 function pointAt(event: MouseEvent | PointerEvent): Point | null {
   if (!canvas.value) return null
   const bounds = canvas.value.getBoundingClientRect()
   return world?.pickGrid(event.clientX, event.clientY, bounds) ?? fallbackPick(event as MouseEvent, bounds)
-}
-
-function gridLine(from: Point, to: Point): Point[] {
-  const points: Point[] = []
-  let x = from.x
-  let y = from.y
-  const dx = Math.abs(to.x - from.x)
-  const dy = Math.abs(to.y - from.y)
-  const sx = from.x < to.x ? 1 : -1
-  const sy = from.y < to.y ? 1 : -1
-  let error = dx - dy
-  while (true) {
-    points.push({ x, y })
-    if (x === to.x && y === to.y) break
-    const twice = error * 2
-    if (twice > -dy) { error -= dy; x += sx }
-    if (twice < dx) { error += dx; y += sy }
-  }
-  return points
 }
 
 function updateCameraState(): void {
@@ -93,12 +83,26 @@ function pointerDown(event: PointerEvent): void {
   if (!point) return
   pointerStart = { clientX: event.clientX, clientY: event.clientY, point }
   pointerLast = point
+  hoveredBuildingId.value = null
+  pathDragging.value = props.selectedTool === 'road' || props.selectedTool === 'wall'
   canvas.value?.setPointerCapture?.(event.pointerId)
 }
 
 function pointerMove(event: PointerEvent): void {
+  if (!pointerStart && !props.selectedTool && canvas.value) {
+    const bounds = canvas.value.getBoundingClientRect()
+    hoveredBuildingId.value = world?.pickBuilding(event.clientX, event.clientY, bounds) ?? null
+    hoverPosition.x = event.clientX - bounds.left + 14
+    hoverPosition.y = event.clientY - bounds.top + 14
+    return
+  }
+  hoveredBuildingId.value = null
   const point = pointAt(event)
   if (!point) return
+  if (pointerStart && (props.selectedTool === 'road' || props.selectedTool === 'wall')) {
+    world?.showPathPreview(props.selectedTool, straightPath(pointerStart.point, point))
+    return
+  }
   if (props.selectedTool) world?.showPreview(props.selectedTool, point)
   if (!pointerStart) return
   const moved = Math.hypot(event.clientX - pointerStart.clientX, event.clientY - pointerStart.clientY)
@@ -112,8 +116,8 @@ function pointerUp(event: PointerEvent): void {
   if (!pointerStart) return
   const end = pointAt(event) ?? pointerStart.point
   const moved = Math.hypot(event.clientX - pointerStart.clientX, event.clientY - pointerStart.clientY)
-  if (props.selectedTool && (props.selectedTool === 'road' || props.selectedTool === 'wall') && moved > 4) {
-    emit('buildPath', gridLine(pointerStart.point, end))
+  if (props.selectedTool === 'road' || props.selectedTool === 'wall') {
+    emit('buildPath', straightPath(pointerStart.point, end))
   } else if (moved <= 4) {
     const bounds = canvas.value?.getBoundingClientRect()
     const buildingId = bounds ? world?.pickBuilding(event.clientX, event.clientY, bounds) : null
@@ -127,6 +131,8 @@ function pointerUp(event: PointerEvent): void {
   handledPointerClick = true
   pointerStart = null
   pointerLast = null
+  pathDragging.value = false
+  world?.hidePreview()
 }
 
 function wheel(event: WheelEvent): void {
@@ -140,12 +146,23 @@ function keyDown(event: KeyboardEvent): void {
     world?.rotateQuarter(event.code === 'KeyE' ? 1 : -1)
     updateCameraState()
   } else if (event.code === 'Escape') {
+    pointerStart = null
+    pointerLast = null
+    pathDragging.value = false
     world?.hidePreview()
     emit('cancel')
   }
 }
 
 function hidePreview(): void {
+  world?.hidePreview()
+  hoveredBuildingId.value = null
+}
+
+function cancelPointerGesture(): void {
+  pointerStart = null
+  pointerLast = null
+  pathDragging.value = false
   world?.hidePreview()
 }
 
@@ -213,17 +230,30 @@ onBeforeUnmount(() => {
   <canvas
     ref="canvas"
     class="voxel-world"
+    :class="{ placing: selectedTool, 'line-building': pathDragging }"
     data-testid="voxel-world"
     :data-battle="String(battleVisible)"
+    :data-tool="selectedTool ?? 'none'"
     :data-quarter="cameraState.quarter"
-    :aria-label="`Изометрическая карта: ${selectedTool}`"
+    :aria-label="selectedTool ? `Изометрическая карта, выбран инструмент: ${selectedTool}` : 'Изометрическая карта, режим осмотра'"
     @pointerdown="pointerDown"
     @pointermove="pointerMove"
     @pointerup="pointerUp"
+    @pointercancel="cancelPointerGesture"
+    @lostpointercapture="cancelPointerGesture"
     @pointerleave="hidePreview"
     @wheel="wheel"
     @click="build"
   ></canvas>
+  <div
+    v-if="hoveredBuilding"
+    class="building-tooltip period-frame"
+    data-testid="building-tooltip"
+    :style="{ left: `${hoverPosition.x}px`, top: `${hoverPosition.y}px` }"
+  >
+    <strong>{{ buildingNames[hoveredBuilding.kind] }}</strong>
+    <span>Состояние {{ hoveredBuilding.health }}%</span>
+  </div>
   <span
     class="sr-only"
     data-testid="camera-state"

@@ -40,6 +40,7 @@ const toolGroups: Record<Mode, Array<{ kind: BuildingKind; icon: Component }>> =
         @click="$emit('tool', tool.kind)"
       >
         <component :is="tool.icon" :size="22" /><span>{{ preset.buildings[tool.kind] }}</span>
+        <small v-if="tool.kind === 'road' || tool.kind === 'wall'">тянуть линию</small>
       </button>
       <button class="battle-command" data-action="attack" @click="$emit('attack')"><Swords :size="22" /><span>Отразить налёт</span></button>
     </div>
