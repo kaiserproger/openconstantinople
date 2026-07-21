@@ -6,4 +6,6 @@ playwright-report/
 test-results/
 tmp/
 .worktrees/
+.codex/
+.agents/
 *.tsbuildinfo
