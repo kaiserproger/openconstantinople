@@ -57,6 +57,10 @@ test('builds, rotates, saves, reloads, and fights on the live voxel map', async 
 
   await page.locator('[data-action="attack"]').click()
   await expect(page.getByTestId('voxel-world')).toHaveAttribute('data-battle', 'true')
+  await expect(page.getByTestId('voxel-world')).toHaveAttribute('data-battle-outcome', 'none')
+  await page.locator('[data-action="select-militia"]').click()
+  await page.getByTestId('voxel-world').click({ position: { x: 660, y: 220 } })
+  await expect(page.getByTestId('voxel-world')).not.toHaveAttribute('data-battle-command', 'none')
   await expect(page.getByTestId('voxel-world')).toHaveAttribute('data-battle-outcome', 'victory')
   await expect(page.getByTestId('battle-report')).toContainText('Схватка у Северных ворот')
   await expect(page.getByTestId('notice')).toContainText('Налёт отбит')
@@ -68,6 +72,8 @@ test('holds the instanced raid at a 60 fps-class cadence with 300 units', async 
   await page.getByTestId('voxel-world').click({ position: { x: 600, y: 240 } })
   await expect(page.getByTestId('object-card')).toBeVisible()
   await page.locator('[data-action="attack"]').click()
+  await page.locator('[data-action="select-militia"]').click()
+  await page.getByTestId('voxel-world').click({ position: { x: 660, y: 220 } })
   await expect.poll(async () => page.evaluate(() => window.__OPENFRONT_METRICS__?.visibleUnits)).toBe(300)
   await page.waitForTimeout(3200)
 

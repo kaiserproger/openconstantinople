@@ -28,6 +28,7 @@ button:focus-visible { outline: 2px solid #f0cf7c; outline-offset: 2px; }
 .voxel-world:active { cursor: grabbing; }
 .voxel-world.placing { cursor: crosshair; }
 .voxel-world.line-building { cursor: cell; }
+.voxel-world.tactical-command { cursor: crosshair; }
 .world-vignette { position: absolute; inset: 0; background: radial-gradient(circle at 52% 47%, transparent 51%, rgba(22,12,29,.36) 100%); pointer-events: none; }
 .building-tooltip { position: absolute; z-index: 14; display: grid; min-width: 154px; max-width: 210px; padding: 7px 9px; pointer-events: none; }
 .building-tooltip strong { color: #f0cf7c; font: 600 12px/1.1 'Alegreya', Georgia, serif; }
@@ -64,7 +65,10 @@ button:focus-visible { outline: 2px solid #f0cf7c; outline-offset: 2px; }
 .realm-outlook span, .battle-report span { display: flex; align-items: center; gap: 3px; margin-top: 3px; color: #c6b8a2; font-size: 9px; }
 .realm-outlook.strained { color: #d89354; border-color: #ad6b3f; }
 .realm-outlook.critical { color: #e36c6f; border-color: var(--danger); background: rgba(55,22,35,.92); }
-.battle-report { position: absolute; z-index: 7; top: 106px; right: 18px; display: flex; align-items: center; gap: 8px; min-width: 196px; padding: 7px 10px; color: #ef8350; background: rgba(45,19,31,.94); border: 1px solid #b85f49; box-shadow: 0 5px 17px #0008; pointer-events: none; }
+.battle-report { position: absolute; z-index: 7; top: 106px; right: 18px; display: flex; align-items: center; gap: 8px; min-width: 196px; padding: 7px 10px; color: #ef8350; background: rgba(45,19,31,.94); border: 1px solid #b85f49; box-shadow: 0 5px 17px #0008; }
+.battle-report button { height: 35px; margin-left: 4px; padding: 0 9px; display: flex; align-items: center; gap: 5px; color: #f1d79b; border-color: #9a7644; background: linear-gradient(#5b3e42,#34212c); }
+.battle-report button.active { color: #241425; background: #e1bd64; border-color: #f0d98b; }
+.battle-report button span { margin: 0; color: inherit; font-size: 9px; }
 .town-label { position: absolute; z-index: 4; left: 50%; top: 58%; transform: translate(-50%,-50%); display: grid; text-align: center; text-shadow: 0 2px 5px #000,0 0 12px #000; pointer-events: none; }
 .town-label span { font: 700 20px 'Alegreya', Georgia, serif; letter-spacing: .04em; }
 .town-label i { font-style: normal; font-size: 10px; color: #ddcfb3; }
@@ -123,6 +127,8 @@ button:focus-visible { outline: 2px solid #f0cf7c; outline-offset: 2px; }
 .crisis-actions button span { font-size: 10px; line-height: 1.05; }
 .crisis-actions button small { color: #ad9aa5; font-size: 8px; line-height: 1.1; }
 .crisis-actions button:last-child { color: #efb6a8; border-color: #92515b; background: linear-gradient(#57303b,#321b27); }
+.crisis-actions button.recommended { border-color: #d3aa55; box-shadow: inset 0 0 0 1px rgba(211,170,85,.35), 0 0 10px rgba(211,170,85,.16); }
+.crisis-actions button b { color: #e5c66d; font: 600 8px 'Alegreya', Georgia, serif; letter-spacing: .05em; text-transform: uppercase; }
 .object-card { display: grid; grid-template-columns: 58px 1fr; gap: 10px 12px; padding-top: 3px; }
 .object-seal { width: 58px; height: 58px; display: grid; place-content: center; text-align: center; border: 1px double var(--gold-dim); outline: 1px solid #180d20; background: radial-gradient(circle, #5f3b68 0 35%, #2b1836 37% 100%); box-shadow: inset 0 0 0 3px rgba(232,223,201,.05); }
 .object-seal span { color: #edcd76; font: 700 19px/1 'Alegreya', Georgia, serif; }

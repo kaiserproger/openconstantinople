@@ -14,6 +14,8 @@ const props = defineProps<{
   buildingDetails: Record<BuildingKind, { role: string; effect: string }>
   battleVisible: boolean
   battleOutcome: 'victory' | 'defeat' | null
+  tacticalCommand: boolean
+  battleCommandPoint: Point | null
   burningBuildingIds: number[]
   stressMode: boolean
 }>()
@@ -22,6 +24,7 @@ const emit = defineEmits<{
   build: [point: Point]
   buildPath: [points: Point[]]
   select: [buildingId: number]
+  battleCommand: [point: Point]
   cancel: []
   cameraChange: [snapshot: CameraSnapshot]
 }>()
@@ -52,6 +55,10 @@ function syncWorld(): void {
 
 function syncSelection(): void {
   world?.setSelectedBuilding(props.selectedBuildingId)
+}
+
+function syncBattleCommand(): void {
+  world?.commandBattle(props.battleCommandPoint)
 }
 
 function fallbackPick(event: MouseEvent, bounds: DOMRect): Point {
@@ -99,7 +106,7 @@ function pointerDown(event: PointerEvent): void {
 }
 
 function pointerMove(event: PointerEvent): void {
-  if (!pointerStart && !props.selectedTool && canvas.value) {
+  if (!pointerStart && !props.selectedTool && !props.tacticalCommand && canvas.value) {
     const bounds = canvas.value.getBoundingClientRect()
     hoveredBuildingId.value = world?.pickBuilding(event.clientX, event.clientY, bounds) ?? null
     hoverPosition.x = event.clientX - bounds.left + 14
@@ -126,7 +133,9 @@ function pointerUp(event: PointerEvent): void {
   if (!pointerStart) return
   const end = pointAt(event) ?? pointerStart.point
   const moved = Math.hypot(event.clientX - pointerStart.clientX, event.clientY - pointerStart.clientY)
-  if (props.selectedTool === 'road' || props.selectedTool === 'wall') {
+  if (props.tacticalCommand && moved <= 4) {
+    emit('battleCommand', end)
+  } else if (props.selectedTool === 'road' || props.selectedTool === 'wall') {
     emit('buildPath', straightPath(pointerStart.point, end))
   } else if (moved <= 4) {
     const bounds = canvas.value?.getBoundingClientRect()
@@ -214,6 +223,7 @@ onMounted(async () => {
     world = new WorldRenderer(canvas.value)
     syncWorld()
     syncSelection()
+    syncBattleCommand()
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => world?.resize())
       resizeObserver.observe(canvas.value)
@@ -235,6 +245,7 @@ watch(
   syncWorld,
 )
 watch(() => props.selectedBuildingId, syncSelection)
+watch(() => props.battleCommandPoint, syncBattleCommand)
 
 onBeforeUnmount(() => {
   disposed = true
@@ -250,14 +261,16 @@ onBeforeUnmount(() => {
   <canvas
     ref="canvas"
     class="voxel-world"
-    :class="{ placing: selectedTool, 'line-building': pathDragging }"
+    :class="{ placing: selectedTool, 'line-building': pathDragging, 'tactical-command': tacticalCommand }"
     data-testid="voxel-world"
     :data-battle="String(battleVisible)"
     :data-battle-outcome="battleOutcome ?? 'none'"
+    :data-tactical="String(tacticalCommand)"
+    :data-battle-command="battleCommandPoint ? `${battleCommandPoint.x}:${battleCommandPoint.y}` : 'none'"
     :data-fires="burningBuildingIds.length"
     :data-tool="selectedTool ?? 'none'"
     :data-quarter="cameraState.quarter"
-    :aria-label="selectedTool ? `Изометрическая карта, выбран инструмент: ${selectedTool}` : 'Изометрическая карта, режим осмотра'"
+    :aria-label="tacticalCommand ? 'Изометрическая карта, укажите точку обороны' : selectedTool ? `Изометрическая карта, выбран инструмент: ${selectedTool}` : 'Изометрическая карта, режим осмотра'"
     @pointerdown="pointerDown"
     @pointermove="pointerMove"
     @pointerup="pointerUp"

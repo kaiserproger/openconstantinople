@@ -50,6 +50,12 @@ export interface Crisis {
 
 export type CrisisResponse = 'fund' | 'hardline'
 
+const CRISIS_FUND_COST: Record<Crisis['kind'], number> = {
+  famine: 24,
+  rebellion: 18,
+  coup: 28,
+}
+
 export interface SettlementOutlook {
   dailyFood: number
   reserveDays: number | null
@@ -417,9 +423,9 @@ export function addressCrisis(
   if (!crisis) return { ok: false, reason: 'Кризис уже миновал' }
 
   const funded = {
-    famine: { silver: 24, pressure: 24, summary: 'Закуплено зерно для городских раздач' },
-    rebellion: { silver: 18, pressure: 24, summary: 'Демам предоставлены временные уступки' },
-    coup: { silver: 28, pressure: 22, summary: 'Знать принесла новые клятвы стратегу' },
+    famine: { silver: CRISIS_FUND_COST.famine, pressure: 24, summary: 'Закуплено зерно для городских раздач' },
+    rebellion: { silver: CRISIS_FUND_COST.rebellion, pressure: 24, summary: 'Демам предоставлены временные уступки' },
+    coup: { silver: CRISIS_FUND_COST.coup, pressure: 22, summary: 'Знать принесла новые клятвы стратегу' },
   }[crisis.kind]
   const hardline = {
     famine: { pressure: 16, summary: 'Введены строгие хлебные пайки' },
@@ -469,6 +475,10 @@ export function addressCrisis(
     tone: resolved ? 'good' : 'warning',
   })
   return { ok: true, resolved, summary }
+}
+
+export function recommendedCrisisResponse(state: GameState, crisis: Crisis): CrisisResponse {
+  return state.resources.silver >= CRISIS_FUND_COST[crisis.kind] ? 'fund' : 'hardline'
 }
 
 export function resolveRaid(

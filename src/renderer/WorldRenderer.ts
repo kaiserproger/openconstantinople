@@ -116,6 +116,7 @@ export class WorldRenderer {
   private enemyFormation: THREE.Group | null = null
   private readonly preview: THREE.Mesh
   private readonly pathPreview: THREE.InstancedMesh
+  private readonly commandMarker: THREE.Mesh
   private readonly pickerGeometry = new THREE.BoxGeometry(1, 1, 1)
   private readonly pickerMaterial = new THREE.MeshBasicMaterial({ visible: false })
   private readonly selectionOutline: THREE.LineSegments
@@ -128,6 +129,7 @@ export class WorldRenderer {
   private battleVisible = false
   private battleOutcome: 'victory' | 'defeat' | null = null
   private battleStartedAt = 0
+  private battleCommandPoint: { x: number; y: number } | null = null
   private burningBuildingIds: number[] = []
   private stressMode = false
   private visibleUnits = 0
@@ -175,6 +177,14 @@ export class WorldRenderer {
     this.pathPreview.visible = false
     this.pathPreview.renderOrder = 21
     this.scene.add(this.pathPreview)
+    this.commandMarker = new THREE.Mesh(
+      new THREE.RingGeometry(0.7, 1.05, 20),
+      new THREE.MeshBasicMaterial({ color: 0xf2c65d, transparent: true, opacity: 0.92, depthTest: false, side: THREE.DoubleSide }),
+    )
+    this.commandMarker.rotation.x = -Math.PI / 2
+    this.commandMarker.visible = false
+    this.commandMarker.renderOrder = 25
+    this.scene.add(this.commandMarker)
     const outlineSource = new THREE.BoxGeometry(1, 1, 1)
     this.selectionOutline = new THREE.LineSegments(
       new THREE.EdgesGeometry(outlineSource),
@@ -253,6 +263,13 @@ export class WorldRenderer {
     this.selectionOutline.scale.copy(picker.scale).multiplyScalar(1.04)
     this.selectionOutline.visible = true
     this.selectionOutline.updateMatrixWorld()
+    this.invalidate()
+  }
+
+  commandBattle(point: { x: number; y: number } | null): void {
+    this.battleCommandPoint = point ? { ...point } : null
+    this.commandMarker.visible = Boolean(point) && this.battleVisible
+    if (point) this.commandMarker.position.set(point.x, 2.05, point.y)
     this.invalidate()
   }
 
@@ -344,6 +361,8 @@ export class WorldRenderer {
     ;(this.preview.material as THREE.Material).dispose()
     this.pathPreview.geometry.dispose()
     ;(this.pathPreview.material as THREE.Material).dispose()
+    this.commandMarker.geometry.dispose()
+    ;(this.commandMarker.material as THREE.Material).dispose()
     this.pickerGeometry.dispose()
     this.pickerMaterial.dispose()
     this.selectionOutline.geometry.dispose()
@@ -409,12 +428,22 @@ export class WorldRenderer {
     const duration = this.stressMode ? 7600 : BATTLE_DURATION_MS
     const progress = THREE.MathUtils.clamp((now - this.battleStartedAt) / duration, 0, 1)
     const approach = THREE.MathUtils.smoothstep(progress, 0, 0.5)
-    const aftermath = THREE.MathUtils.smoothstep(progress, 0.68, 1)
+    const aftermath = this.battleOutcome ? THREE.MathUtils.smoothstep(progress, 0.68, 1) : 0
     const clash = progress > 0.42 && progress < 0.72 ? Math.sin(progress * 95) * 0.16 : 0
 
-    this.friendlyFormation.position.set(20 + approach * 13 + aftermath * 2, 1.5 + Math.abs(clash), 36)
+    const targetX = this.battleCommandPoint ? this.battleCommandPoint.x - 2.5 : 33
+    const targetZ = this.battleCommandPoint?.y ?? 36
+    this.friendlyFormation.position.set(
+      THREE.MathUtils.lerp(20, targetX, approach) + aftermath * 2,
+      1.5 + Math.abs(clash),
+      THREE.MathUtils.lerp(36, targetZ, approach),
+    )
     const enemyRetreatX = this.battleOutcome === 'victory' ? 13 : -10
     this.enemyFormation.position.set(48 - approach * 12 + aftermath * enemyRetreatX, 1.5 + Math.abs(clash), 36)
+    if (this.commandMarker.visible) {
+      const pulse = 1 + Math.sin(now * 0.009) * 0.12
+      this.commandMarker.scale.setScalar(pulse)
+    }
     if (progress < 1) this.needsRender = true
   }
 

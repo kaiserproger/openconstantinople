@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, reactive, ref } from 'vue'
-import { Flame, Hammer, Shield, Trash2, TrendingDown, TrendingUp, Wheat } from '@lucide/vue'
+import { Crosshair, Flame, Hammer, Shield, Trash2, TrendingDown, TrendingUp, Wheat } from '@lucide/vue'
 import EdgeDrawer from './components/EdgeDrawer.vue'
 import GameWorld from './components/GameWorld.vue'
 import ModeBar from './components/ModeBar.vue'
@@ -13,12 +13,14 @@ import {
   dismissThreat,
   placeBuilding,
   placePath,
+  recommendedCrisisResponse,
   repairBuilding,
   revealThreat,
   resolveRaid,
   settlementOutlook,
   type BuildingKind,
   type CrisisResponse,
+  type Point,
 } from './game/simulation'
 import { decodeSave, encodeSave } from './game/persistence'
 import { byzantineMacedonian } from './presets'
@@ -38,6 +40,9 @@ const notice = ref('Выберите раздел строительства и�
 const battleVisible = ref(false)
 const battleOutcome = ref<'victory' | 'defeat' | null>(null)
 const burningBuildingIds = ref<number[]>([])
+const tacticalCommand = ref(false)
+const battleCommandPoint = ref<Point | null>(null)
+const activeBattleThreatId = ref<number | null>(null)
 const gameWorld = ref<InstanceType<typeof GameWorld> | null>(null)
 const stressMode = new URLSearchParams(window.location.search).has('stress')
 let worldCounter = 1
@@ -116,16 +121,47 @@ function defendCity(): void {
   }
   window.clearTimeout(battleTimer)
   battleVisible.value = true
-  const result = resolveRaid(game, primaryThreat.value.id, 68)
-  const threatId = primaryThreat.value.id
+  battleOutcome.value = null
+  burningBuildingIds.value = []
+  tacticalCommand.value = false
+  battleCommandPoint.value = null
+  activeBattleThreatId.value = primaryThreat.value.id
+  notice.value = 'Ополчение выступило · укажите точку обороны или положитесь на воеводу'
+  battleTimer = window.setTimeout(() => resolveActiveRaid(false), 3200)
+}
+
+function selectMilitia(): void {
+  if (!battleVisible.value || battleOutcome.value) return
+  tacticalCommand.value = true
+  selectedTool.value = null
+  closeObjectDrawer()
+  notice.value = 'Ополчение выбрано · укажите точку обороны на карте'
+}
+
+function commandMilitia(point: Point): void {
+  if (!tacticalCommand.value || !battleVisible.value || battleOutcome.value) return
+  tacticalCommand.value = false
+  battleCommandPoint.value = { ...point }
+  resolveActiveRaid(true)
+}
+
+function resolveActiveRaid(manualOrder: boolean): void {
+  if (!battleVisible.value || battleOutcome.value || activeBattleThreatId.value === null) return
+  window.clearTimeout(battleTimer)
+  battleTimer = 0
+  const threatId = activeBattleThreatId.value
+  const result = resolveRaid(game, threatId, manualOrder ? 72 : 58)
   battleOutcome.value = result.outcome
   burningBuildingIds.value = result.burningBuildingIds
   notice.value = result.outcome === 'victory'
-    ? `Налёт отбит · враг потерял ${result.enemyLosses}, город — ${result.cityLosses}`
-    : `Посад прорван · потери ${result.cityLosses}`
+    ? `Налёт отбит ${manualOrder ? 'по вашему приказу' : 'воеводой'} · враг потерял ${result.enemyLosses}, город — ${result.cityLosses}`
+    : `Без приказа посад прорван · потери ${result.cityLosses}`
   battleTimer = window.setTimeout(() => {
     battleTimer = 0
     battleVisible.value = false
+    tacticalCommand.value = false
+    battleCommandPoint.value = null
+    activeBattleThreatId.value = null
     burningBuildingIds.value = []
     if (result.outcome === 'victory') dismissThreat(game, threatId, 'defeat')
   }, stressMode ? 8000 : 4800)
@@ -156,6 +192,11 @@ function selectBuilding(buildingId: number): void {
 }
 
 function cancelInteraction(): void {
+  if (tacticalCommand.value) {
+    tacticalCommand.value = false
+    notice.value = 'Приказ отменён · воевода продолжает оборону'
+    return
+  }
   const hadObject = selectedBuildingId.value !== null
   selectedTool.value = null
   closeObjectDrawer()
@@ -206,6 +247,9 @@ function loadSettlement(): void {
   battleVisible.value = false
   battleOutcome.value = null
   burningBuildingIds.value = []
+  tacticalCommand.value = false
+  battleCommandPoint.value = null
+  activeBattleThreatId.value = null
   notice.value = 'Летопись княжества восстановлена'
   void nextTick(() => gameWorld.value?.restoreCamera(result.meta.camera))
 }
@@ -221,6 +265,9 @@ function newWorld(): void {
   battleVisible.value = false
   battleOutcome.value = null
   burningBuildingIds.value = []
+  tacticalCommand.value = false
+  battleCommandPoint.value = null
+  activeBattleThreatId.value = null
   notice.value = `Открыта новая фема · ${game.map.seed}`
 }
 
@@ -246,11 +293,14 @@ onUnmounted(() => {
         :building-details="byzantineMacedonian.buildingDetails"
         :battle-visible="battleVisible"
         :battle-outcome="battleOutcome"
+        :tactical-command="tacticalCommand"
+        :battle-command-point="battleCommandPoint"
         :burning-building-ids="burningBuildingIds"
         :stress-mode="stressMode"
         @build="buildAt"
         @build-path="buildPath"
         @select="selectBuilding"
+        @battle-command="commandMilitia"
         @cancel="cancelInteraction"
       />
       <div class="world-vignette"></div>
@@ -263,7 +313,17 @@ onUnmounted(() => {
         <div><strong>Амбары</strong><span v-if="outlook.reserveDays === null"><TrendingUp :size="12" /> +{{ outlook.dailyFood }} в день</span><span v-else><TrendingDown :size="12" /> {{ outlook.reserveDays }} дн. · {{ outlook.dailyFood }} в день</span></div>
       </div>
       <div v-if="battleVisible" class="battle-report" data-testid="battle-report">
-        <Flame :size="17" /><div><strong>Схватка у Северных ворот</strong><span>{{ battleOutcome === 'victory' ? 'Враг дрогнул и отходит' : 'Налётчики рвутся к амбарам' }}</span></div>
+        <Flame :size="17" />
+        <div>
+          <strong>Схватка у Северных ворот</strong>
+          <span>{{ battleOutcome === 'victory' ? 'Враг дрогнул и отходит' : battleOutcome === 'defeat' ? 'Налётчики рвутся к амбарам' : 'Ополчение ждёт приказа' }}</span>
+        </div>
+        <button
+          v-if="!battleOutcome"
+          :class="{ active: tacticalCommand }"
+          data-action="select-militia"
+          @click="selectMilitia"
+        ><Crosshair :size="15" /><span>{{ tacticalCommand ? 'Укажите точку' : 'Ополчение' }}</span></button>
       </div>
       <div class="town-label"><span>{{ byzantineMacedonian.cityName }}</span><i>Порядок {{ game.order }} · легитимность {{ game.legitimacy }}</i></div>
       <div v-if="constructionHint" class="construction-hint" data-testid="construction-hint">{{ constructionHint }}</div>
@@ -308,8 +368,8 @@ onUnmounted(() => {
         <header><strong>{{ byzantineMacedonian.crises[crisis.kind].title }}</strong><span>{{ crisis.pressure }}</span></header>
         <div class="crisis-pressure"><i :style="{ width: `${crisis.pressure}%` }"></i></div>
         <div class="crisis-actions">
-          <button data-action="address-crisis" @click="handleCrisis(crisis.id, 'fund')"><span>{{ byzantineMacedonian.crises[crisis.kind].action }}</span><small>{{ byzantineMacedonian.crises[crisis.kind].cost }}</small></button>
-          <button data-action="address-crisis-hardline" @click="handleCrisis(crisis.id, 'hardline')"><span>{{ byzantineMacedonian.crises[crisis.kind].alternative }}</span><small>{{ byzantineMacedonian.crises[crisis.kind].alternativeCost }}</small></button>
+          <button :class="{ recommended: recommendedCrisisResponse(game, crisis) === 'fund' }" data-action="address-crisis" @click="handleCrisis(crisis.id, 'fund')"><span>{{ byzantineMacedonian.crises[crisis.kind].action }}</span><small>{{ byzantineMacedonian.crises[crisis.kind].cost }}</small><b v-if="recommendedCrisisResponse(game, crisis) === 'fund'">Совет Двора</b></button>
+          <button :class="{ recommended: recommendedCrisisResponse(game, crisis) === 'hardline' }" data-action="address-crisis-hardline" @click="handleCrisis(crisis.id, 'hardline')"><span>{{ byzantineMacedonian.crises[crisis.kind].alternative }}</span><small>{{ byzantineMacedonian.crises[crisis.kind].alternativeCost }}</small><b v-if="recommendedCrisisResponse(game, crisis) === 'hardline'">Совет Двора</b></button>
         </div>
       </article>
     </EdgeDrawer>

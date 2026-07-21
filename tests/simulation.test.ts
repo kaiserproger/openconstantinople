@@ -7,6 +7,7 @@ import {
   dismissThreat,
   placeBuilding,
   placePath,
+  recommendedCrisisResponse,
   repairBuilding,
   resolveRaid,
   revealThreat,
@@ -348,5 +349,15 @@ describe('dynamic threat director', () => {
     const afterBattle = structuredClone(state)
     expect(resolveRaid(state, threat.id, 68)).toMatchObject({ enemyLosses: 0, cityLosses: 0, damagedBuildingIds: [] })
     expect(state).toEqual(afterBattle)
+  })
+
+  it('recommends the affordable court response without hiding the alternative', () => {
+    const state = createGame('court-advice')
+    const crisis = { id: state.nextId++, kind: 'famine' as const, pressure: 40 }
+    state.crises.push(crisis)
+
+    expect(recommendedCrisisResponse(state, crisis)).toBe('fund')
+    state.resources.silver = 0
+    expect(recommendedCrisisResponse(state, crisis)).toBe('hardline')
   })
 })

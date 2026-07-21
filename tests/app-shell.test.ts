@@ -104,11 +104,17 @@ describe('Openfront shell', () => {
 
     await wrapper.get('[data-action="attack"]').trigger('click')
 
-    expect(wrapper.get('[data-testid="notice"]').text()).toContain('Налёт отбит')
     expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-battle')).toBe('true')
+    expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-battle-outcome')).toBe('none')
+    expect(wrapper.get('[data-testid="battle-report"]').text()).toContain('Ополчение ждёт приказа')
+    await wrapper.get('[data-action="select-militia"]').trigger('click')
+    expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-tactical')).toBe('true')
+    wrapper.getComponent(GameWorld).vm.$emit('battleCommand', { x: 39, y: 10 })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('[data-testid="notice"]').text()).toContain('Налёт отбит по вашему приказу')
     expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-battle-outcome')).toBe('victory')
     expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-fires')).toBe('1')
-    expect(wrapper.get('[data-testid="battle-report"]').text()).toContain('Схватка у Северных ворот')
     expect(wrapper.get('[data-action="attack"]').attributes('disabled')).toBeDefined()
     expect(wrapper.findAll('[data-testid="friendly-unit"]')).toHaveLength(0)
     expect(wrapper.findAll('[data-testid="enemy-unit"]')).toHaveLength(0)
@@ -119,6 +125,9 @@ describe('Openfront shell', () => {
     const wrapper = mount(App)
     try {
       await wrapper.get('[data-action="attack"]').trigger('click')
+      await wrapper.get('[data-action="select-militia"]').trigger('click')
+      wrapper.getComponent(GameWorld).vm.$emit('battleCommand', { x: 39, y: 10 })
+      await wrapper.vm.$nextTick()
       expect(wrapper.find('.raid-marker').exists()).toBe(true)
 
       await vi.advanceTimersByTimeAsync(4800)
@@ -127,6 +136,22 @@ describe('Openfront shell', () => {
       expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-battle')).toBe('false')
       expect(wrapper.find('.raid-marker').exists()).toBe(false)
       expect(wrapper.get('[data-action="attack"]').text()).toContain('Угроз нет')
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
+  })
+
+  it('falls back to a weaker automatic defense when no order is given', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(App)
+    try {
+      await wrapper.get('[data-action="attack"]').trigger('click')
+      await vi.advanceTimersByTimeAsync(3200)
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-battle-outcome')).toBe('defeat')
+      expect(wrapper.get('[data-testid="notice"]').text()).toContain('Без приказа посад прорван')
     } finally {
       wrapper.unmount()
       vi.useRealTimers()
