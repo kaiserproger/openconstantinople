@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Castle, Coins, Dices, Eye, FastForward, FolderOpen, Pause, Play, Save, ScrollText, ShieldAlert, TreePine, Users, Wheat } from '@lucide/vue'
+import { Castle, Coins, Crown, Dices, Eye, FastForward, FolderOpen, Pause, Play, Save, ScrollText, ShieldAlert, TreePine, Users, Wheat } from '@lucide/vue'
 
 defineProps<{
   cityName: string
@@ -16,7 +16,7 @@ defineEmits<{
   newWorld: []
   save: []
   load: []
-  toggleDrawer: [drawer: 'chronicle' | 'intel']
+  toggleDrawer: [drawer: 'chronicle' | 'court' | 'intel']
 }>()
 </script>
 
@@ -32,6 +32,7 @@ defineEmits<{
     </div>
     <nav class="hud-actions" aria-label="Управление княжеством">
       <button data-action="toggle-chronicle" title="Летопись" @click="$emit('toggleDrawer', 'chronicle')"><ScrollText :size="17" /></button>
+      <button data-action="toggle-court" title="Двор" @click="$emit('toggleDrawer', 'court')"><Crown :size="17" /></button>
       <button data-action="toggle-intel" title="Разведка" @click="$emit('toggleDrawer', 'intel')"><Eye :size="17" /></button>
       <button data-action="new-world" title="Новый мир" @click="$emit('newWorld')"><Dices :size="17" /></button>
       <button data-action="save" title="Сохранить" @click="$emit('save')"><Save :size="17" /></button>

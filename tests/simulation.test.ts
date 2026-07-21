@@ -1,4 +1,5 @@
 import {
+  addressCrisis,
   advanceGame,
   createGame,
   dismissThreat,
@@ -85,6 +86,42 @@ describe('settlement simulation', () => {
 
     expect(state.crises.some((crisis) => crisis.kind === 'famine')).toBe(true)
     expect(state.order).toBeLessThan(72)
+  })
+
+  it('lets the court fund famine relief with an explicit treasury cost', () => {
+    const state = createGame('famine-relief')
+    state.resources.food = 0
+    state.crises.push({ id: 500, kind: 'famine', pressure: 30 })
+
+    const result = addressCrisis(state, 500)
+
+    expect(result).toEqual({ ok: true, resolved: false, summary: 'Закуплено зерно для городских раздач' })
+    expect(state.resources).toMatchObject({ silver: 68, food: 480 })
+    expect(state.order).toBe(76)
+    expect(state.crises[0]?.pressure).toBe(6)
+  })
+
+  it('resolves a weakened crisis and records the political consequence', () => {
+    const state = createGame('coup-oaths')
+    state.crises.push({ id: 501, kind: 'coup', pressure: 20 })
+
+    const result = addressCrisis(state, 501)
+
+    expect(result).toMatchObject({ ok: true, resolved: true })
+    expect(state.crises).toHaveLength(0)
+    expect(state.legitimacy).toBe(78)
+    expect(state.order).toBe(70)
+    expect(state.events.at(-1)?.title).toBe('Кризис урегулирован')
+  })
+
+  it('does not partially mutate a crisis when the treasury cannot fund a response', () => {
+    const state = createGame('empty-treasury')
+    state.resources.silver = 0
+    state.crises.push({ id: 502, kind: 'rebellion', pressure: 48 })
+    const before = structuredClone(state)
+
+    expect(addressCrisis(state, 502)).toEqual({ ok: false, reason: 'В казне недостаточно средств' })
+    expect(state).toEqual(before)
   })
 
   it('escalates low order into rebellion and low legitimacy into a coup', () => {

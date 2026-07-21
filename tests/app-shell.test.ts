@@ -21,6 +21,12 @@ describe('Openfront shell', () => {
 
     expect(wrapper.findAll('[data-testid="edge-drawer"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="edge-drawer"]').text()).toContain('Разведка')
+
+    await wrapper.get('[data-action="toggle-court"]').trigger('click')
+
+    expect(wrapper.findAll('[data-testid="edge-drawer"]')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="edge-drawer"]').text()).toContain('Двор стратега')
+    expect(wrapper.get('[data-testid="edge-drawer"]').text()).toContain('Кризисов нет')
   })
 
   it('selects a building tool and places it on the world', async () => {

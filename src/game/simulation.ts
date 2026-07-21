@@ -259,6 +259,45 @@ function escalateCrisis(state: GameState, kind: Crisis['kind'], title: string, t
   state.events.push({ id: state.nextId++, day: state.day, title, text, tone: 'danger' })
 }
 
+export function addressCrisis(
+  state: GameState,
+  crisisId: number,
+): { ok: true; resolved: boolean; summary: string } | { ok: false; reason: string } {
+  const crisis = state.crises.find((item) => item.id === crisisId)
+  if (!crisis) return { ok: false, reason: 'Кризис уже миновал' }
+
+  const response = {
+    famine: { silver: 24, pressure: 24, summary: 'Закуплено зерно для городских раздач' },
+    rebellion: { silver: 18, pressure: 24, summary: 'Демам предоставлены временные уступки' },
+    coup: { silver: 28, pressure: 22, summary: 'Знать принесла новые клятвы стратегу' },
+  }[crisis.kind]
+  if (state.resources.silver < response.silver) return { ok: false, reason: 'В казне недостаточно средств' }
+
+  state.resources.silver -= response.silver
+  crisis.pressure = Math.max(0, crisis.pressure - response.pressure)
+  if (crisis.kind === 'famine') {
+    state.resources.food += 480
+    state.order = Math.min(100, state.order + 4)
+  } else if (crisis.kind === 'rebellion') {
+    state.order = Math.min(100, state.order + 10)
+    state.legitimacy = Math.max(0, state.legitimacy - 3)
+  } else {
+    state.legitimacy = Math.min(100, state.legitimacy + 12)
+    state.order = Math.max(0, state.order - 2)
+  }
+
+  const resolved = crisis.pressure === 0
+  if (resolved) state.crises.splice(state.crises.indexOf(crisis), 1)
+  state.events.push({
+    id: state.nextId++,
+    day: state.day,
+    title: resolved ? 'Кризис урегулирован' : 'Решение Двора',
+    text: response.summary,
+    tone: resolved ? 'good' : 'warning',
+  })
+  return { ok: true, resolved, summary: response.summary }
+}
+
 export function resolveRaid(
   state: GameState,
   threatId: number,

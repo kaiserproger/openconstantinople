@@ -88,6 +88,21 @@ button:focus-visible { outline: 2px solid #f0cf7c; outline-offset: 2px; }
 .drawer-content h3 { margin: 13px 0 7px; color: #dfbe70; font: 600 14px 'Alegreya', serif; }
 .political-actors { margin: 12px 0 0; padding: 0; list-style: none; }
 .political-actors li { padding: 7px 4px; border-top: 1px solid rgba(211,170,85,.18); font-size: 11px; }
+.court-balance { display: grid; gap: 9px; padding: 5px 0 12px; border-bottom: 1px solid rgba(211,170,85,.35); }
+.court-balance > div { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+.court-balance span { color: #cab795; font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
+.court-balance strong { color: #e5c571; font: 700 14px 'Alegreya', serif; }
+.court-balance i, .crisis-pressure { grid-column: 1 / -1; height: 6px; overflow: hidden; background: #130b18; border: 1px inset #6e5875; }
+.court-balance i b { display: block; height: 100%; background: var(--gold-dim); }
+.court-calm { margin-top: 14px !important; padding: 12px 5px; border-block: 1px solid rgba(211,170,85,.2); }
+.crisis-card { margin-top: 12px; padding: 10px; border: 1px solid rgba(184,78,82,.65); background: rgba(61,25,40,.58); }
+.crisis-card header { display: flex; justify-content: space-between; gap: 8px; }
+.crisis-card header strong { color: #efc0aa; font: 600 13px 'Alegreya', serif; }
+.crisis-card header span { color: #e57979; font-weight: 700; }
+.crisis-pressure { margin: 8px 0; }
+.crisis-pressure i { display: block; height: 100%; background: var(--danger); }
+.crisis-card small { display: block; min-height: 26px; color: #b9a89d; font-size: 9px; }
+.crisis-card button { width: 100%; min-height: 30px; margin-top: 7px; }
 
 @media (max-width: 1250px) {
   .top-hud { grid-template-columns: 265px 1fr 344px; }

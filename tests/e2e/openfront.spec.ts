@@ -12,6 +12,13 @@ test('builds, rotates, saves, reloads, and fights on the live voxel map', async 
   await expect(page.getByText('Порфирополис').first()).toBeVisible()
   const seedBefore = await page.getByTestId('seed').textContent()
 
+  await page.locator('[data-action="toggle-court"]').click()
+  await expect(page.getByTestId('edge-drawer')).toContainText('Двор стратега')
+  await expect(page.getByTestId('edge-drawer')).toContainText('Кризисов нет')
+  await page.locator('[data-action="toggle-intel"]').click()
+  await expect(page.getByTestId('edge-drawer')).toContainText('Разведка')
+  await expect(page.getByTestId('edge-drawer')).toHaveCount(1)
+
   await page.locator('[data-kind="house"]').click()
   await page.getByTestId('voxel-world').click({ position: { x: 620, y: 480 } })
   await expect(page.getByTestId('notice')).toContainText('Инсула заложена')

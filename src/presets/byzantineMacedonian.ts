@@ -20,6 +20,11 @@ export const byzantineMacedonian: CivilizationPreset = {
     townHall: 'Дворец стратега',
   },
   units: { militia: 'Городское ополчение', retinue: 'Тагма', raider: 'Налётчики' },
+  crises: {
+    famine: { title: 'Голод в посаде', action: 'Закупить зерно', cost: '24 номисмы' },
+    rebellion: { title: 'Бунт городских демов', action: 'Даровать уступки', cost: '18 номисм · −3 легитимности' },
+    coup: { title: 'Заговор знати', action: 'Принять клятвы', cost: '28 номисм · −2 порядка' },
+  },
   threats: ['Сельджукский бейлик', 'Славянский союз', 'Арабский эмират', 'Персидская держава'],
   palette: {
     porphyry: 0x351a46,

@@ -6,6 +6,7 @@ import GameWorld from './components/GameWorld.vue'
 import ModeBar from './components/ModeBar.vue'
 import TopHud from './components/TopHud.vue'
 import {
+  addressCrisis,
   advanceGame,
   createGame,
   placeBuilding,
@@ -18,7 +19,7 @@ import { decodeSave, encodeSave } from './game/persistence'
 import { byzantineMacedonian } from './presets'
 
 type Mode = 'streets' | 'quarters' | 'production' | 'defense'
-type Drawer = 'chronicle' | 'intel'
+type Drawer = 'chronicle' | 'court' | 'intel'
 
 const game = reactive(createGame('heather-17'))
 revealThreat(game, 'raiders', 85)
@@ -81,6 +82,11 @@ function defendCity(): void {
 
 function toggleDrawer(drawer: Drawer): void {
   activeDrawer.value = activeDrawer.value === drawer ? null : drawer
+}
+
+function handleCrisis(crisisId: number): void {
+  const result = addressCrisis(game, crisisId)
+  notice.value = result.ok ? result.summary : result.reason
 }
 
 function saveSettlement(): void {
@@ -172,6 +178,20 @@ onUnmounted(() => window.clearInterval(timer))
       <h3>{{ byzantineMacedonian.threats[0] }}</h3>
       <p>Передовые разъезды движутся к дороге на Порфирополис. Состав войска уточняется.</p>
       <ul class="political-actors"><li v-for="actor in byzantineMacedonian.threats" :key="actor">{{ actor }}</li></ul>
+    </EdgeDrawer>
+
+    <EdgeDrawer v-if="activeDrawer === 'court'" title="Двор стратега" @close="activeDrawer = null">
+      <div class="court-balance">
+        <div><span>Порядок</span><strong>{{ game.order }}</strong><i><b :style="{ width: `${game.order}%` }"></b></i></div>
+        <div><span>Легитимность</span><strong>{{ game.legitimacy }}</strong><i><b :style="{ width: `${game.legitimacy}%` }"></b></i></div>
+      </div>
+      <p v-if="game.crises.length === 0" class="court-calm">Кризисов нет. Двор сохраняет хрупкое равновесие.</p>
+      <article v-for="crisis in game.crises" :key="crisis.id" class="crisis-card" :data-crisis="crisis.kind">
+        <header><strong>{{ byzantineMacedonian.crises[crisis.kind].title }}</strong><span>{{ crisis.pressure }}</span></header>
+        <div class="crisis-pressure"><i :style="{ width: `${crisis.pressure}%` }"></i></div>
+        <small>{{ byzantineMacedonian.crises[crisis.kind].cost }}</small>
+        <button data-action="address-crisis" @click="handleCrisis(crisis.id)">{{ byzantineMacedonian.crises[crisis.kind].action }}</button>
+      </article>
     </EdgeDrawer>
 
     <ModeBar
