@@ -236,12 +236,14 @@ export function generateByzantineBuilding(kind: BuildingKind, seed: string): Vox
 
   if (kind === 'granary') {
     const model = createModel(kind)
-    for (let x = 0; x < 6; x += 2) for (let z = 0; z < 4; z += 3) addBox(model, [x, 0, z], [1, 2, 1], 'marble')
-    addFloor(model, 6, 4, 2, 'timber')
-    addPerimeter(model, 6, 4, 3, 3, 'brick')
-    addGabledRoof(model, 6, 4, 6)
-    for (const x of [1, 3, 5]) addVoxel(model, x, 3.7, -0.43, 'gold', [0.42, 0.62, 0.22])
-    addVoxel(model, 2.5, 3.7, -0.46, 'timber', [0.72, 1.55, 0.22])
+    addFloor(model, 6, 4, 0, 'earth')
+    for (const x of [0, 3]) for (const z of [0, 2]) addBox(model, [x, 0.5, z], [1, 1.5, 1], 'marble')
+    addFloor(model, 4, 3, 2, 'timber')
+    addPerimeter(model, 4, 3, 3, 3, 'brick')
+    addGabledRoof(model, 4, 3, 6)
+    for (const z of [0.4, 1.5, 2.6]) addVoxel(model, 4.7, 0.72, z, 'gold', [0.72, 1.1, 0.72])
+    addVoxel(model, 1.5, 3.7, -0.46, 'timber', [0.72, 1.55, 0.22])
+    addVoxel(model, 5.35, 0.45, 1.5, 'timber', [0.18, 0.9, 2.7])
     return model
   }
 
@@ -249,14 +251,18 @@ export function generateByzantineBuilding(kind: BuildingKind, seed: string): Vox
     const model = createModel(kind)
     const brickFacade = random() > 0.5
     const roofAlongDepth = random() > 0.5
-    addFloor(model, 5, 4, 0, 'marble')
-    addPerimeter(model, 5, 4, 1, 2, brickFacade ? 'brick' : 'marble')
-    if (roofAlongDepth) addGabledRoofAlongDepth(model, 5, 4, 3)
-    else addGabledRoof(model, 5, 4, 3)
-    addVoxel(model, 2, 1.15, -0.43, 'timber', [0.72, 1.65, 0.22])
-    for (const x of [0.9, 3.1]) addVoxel(model, x, 1.6, -0.45, 'gold', [0.48, 0.52, 0.2])
-    addVoxel(model, 4, 4.5, 2.5, 'brick', [0.62, 2.1, 0.62])
-    if (random() > 0.5) addVoxel(model, 2, 2.75, -0.48, 'timber', [3.2, 0.22, 0.3])
+    addFloor(model, 5, 4, 0, 'earth')
+    addPerimeter(model, 3, 3, 1, 2, brickFacade ? 'brick' : 'marble')
+    if (roofAlongDepth) addGabledRoofAlongDepth(model, 3, 3, 3)
+    else addGabledRoof(model, 3, 3, 3)
+    addVoxel(model, 1, 1.15, -0.43, 'timber', [0.72, 1.65, 0.22])
+    for (const x of [0.45, 1.7]) addVoxel(model, x, 1.6, -0.45, 'gold', [0.4, 0.52, 0.2])
+    addVoxel(model, 2.15, 4.25, 1.7, 'brick', [0.52, 1.7, 0.52])
+    addVoxel(model, 3.65, 0.18, 1.5, 'grass', [1.7, 0.22, 2.8])
+    addVoxel(model, 4.45, 0.52, 1.5, 'timber', [0.16, 0.72, 3.2])
+    addVoxel(model, 3.55, 0.52, 2.95, 'timber', [1.7, 0.72, 0.16])
+    addVoxel(model, 3.6, 0.72, 1.4, 'foliage', [0.68, 0.82, 0.68])
+    if (random() > 0.5) addVoxel(model, 1, 2.75, -0.48, 'timber', [2.1, 0.22, 0.3])
     return model
   }
 

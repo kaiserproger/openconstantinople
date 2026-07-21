@@ -48,6 +48,14 @@ export interface Crisis {
   pressure: number
 }
 
+export type CrisisResponse = 'fund' | 'hardline'
+
+export interface SettlementOutlook {
+  dailyFood: number
+  reserveDays: number | null
+  level: 'secure' | 'strained' | 'critical'
+}
+
 export interface GameEvent {
   id: number
   day: number
@@ -382,6 +390,14 @@ export function dismissThreat(state: GameState, threatId: number, reason: 'suppl
   state.events.push({ id: state.nextId++, day: state.day, title: 'Угроза миновала', text: `Вражеские отряды рассеялись ${cause}.`, tone: 'good' })
 }
 
+export function settlementOutlook(state: GameState): SettlementOutlook {
+  const farms = state.buildings.filter((building) => building.kind === 'farm' && building.progress >= 1).length
+  const dailyFood = farms * 14 - Math.ceil(state.people * 0.12)
+  const reserveDays = dailyFood < 0 ? Math.floor(state.resources.food / Math.abs(dailyFood)) : null
+  const level = reserveDays === null || reserveDays > 30 ? 'secure' : reserveDays > 7 ? 'strained' : 'critical'
+  return { dailyFood, reserveDays, level }
+}
+
 function escalateCrisis(state: GameState, kind: Crisis['kind'], title: string, text: string): void {
   const crisis = state.crises.find((item) => item.kind === kind)
   if (crisis) {
@@ -395,28 +411,52 @@ function escalateCrisis(state: GameState, kind: Crisis['kind'], title: string, t
 export function addressCrisis(
   state: GameState,
   crisisId: number,
+  responseKind: CrisisResponse = 'fund',
 ): { ok: true; resolved: boolean; summary: string } | { ok: false; reason: string } {
   const crisis = state.crises.find((item) => item.id === crisisId)
   if (!crisis) return { ok: false, reason: 'Кризис уже миновал' }
 
-  const response = {
+  const funded = {
     famine: { silver: 24, pressure: 24, summary: 'Закуплено зерно для городских раздач' },
     rebellion: { silver: 18, pressure: 24, summary: 'Демам предоставлены временные уступки' },
     coup: { silver: 28, pressure: 22, summary: 'Знать принесла новые клятвы стратегу' },
   }[crisis.kind]
-  if (state.resources.silver < response.silver) return { ok: false, reason: 'В казне недостаточно средств' }
+  const hardline = {
+    famine: { pressure: 16, summary: 'Введены строгие хлебные пайки' },
+    rebellion: { pressure: 32, summary: 'Тагма разогнала мятежные демы' },
+    coup: { pressure: 30, summary: 'Заговорщики арестованы во дворце' },
+  }[crisis.kind]
 
-  state.resources.silver -= response.silver
-  crisis.pressure = Math.max(0, crisis.pressure - response.pressure)
-  if (crisis.kind === 'famine') {
-    state.resources.food += 480
-    state.order = Math.min(100, state.order + 4)
-  } else if (crisis.kind === 'rebellion') {
-    state.order = Math.min(100, state.order + 10)
-    state.legitimacy = Math.max(0, state.legitimacy - 3)
+  let summary: string
+  if (responseKind === 'fund') {
+    if (state.resources.silver < funded.silver) return { ok: false, reason: 'В казне недостаточно средств' }
+    state.resources.silver -= funded.silver
+    crisis.pressure = Math.max(0, crisis.pressure - funded.pressure)
+    summary = funded.summary
+    if (crisis.kind === 'famine') {
+      state.resources.food += 480
+      state.order = Math.min(100, state.order + 4)
+    } else if (crisis.kind === 'rebellion') {
+      state.order = Math.min(100, state.order + 10)
+      state.legitimacy = Math.max(0, state.legitimacy - 3)
+    } else {
+      state.legitimacy = Math.min(100, state.legitimacy + 12)
+      state.order = Math.max(0, state.order - 2)
+    }
   } else {
-    state.legitimacy = Math.min(100, state.legitimacy + 12)
-    state.order = Math.max(0, state.order - 2)
+    crisis.pressure = Math.max(0, crisis.pressure - hardline.pressure)
+    summary = hardline.summary
+    if (crisis.kind === 'famine') {
+      state.resources.food += 160
+      state.order = Math.max(0, state.order - 7)
+    } else if (crisis.kind === 'rebellion') {
+      state.people = Math.max(0, state.people - 3)
+      state.order = Math.min(100, state.order + 8)
+      state.legitimacy = Math.max(0, state.legitimacy - 7)
+    } else {
+      state.order = Math.max(0, state.order - 8)
+      state.legitimacy = Math.min(100, state.legitimacy + 6)
+    }
   }
 
   const resolved = crisis.pressure === 0
@@ -425,19 +465,27 @@ export function addressCrisis(
     id: state.nextId++,
     day: state.day,
     title: resolved ? 'Кризис урегулирован' : 'Решение Двора',
-    text: response.summary,
+    text: summary,
     tone: resolved ? 'good' : 'warning',
   })
-  return { ok: true, resolved, summary: response.summary }
+  return { ok: true, resolved, summary }
 }
 
 export function resolveRaid(
   state: GameState,
   threatId: number,
   defenseStrength: number,
-): { outcome: 'victory' | 'defeat'; enemyLosses: number; cityLosses: number } {
+): {
+  outcome: 'victory' | 'defeat'
+  enemyLosses: number
+  cityLosses: number
+  damagedBuildingIds: number[]
+  burningBuildingIds: number[]
+} {
   const threat = state.threats.find((item) => item.id === threatId)
-  if (!threat || threat.status === 'disbanded') return { outcome: 'victory', enemyLosses: 0, cityLosses: 0 }
+  if (!threat || threat.status === 'disbanded' || threat.status === 'withdrawing') {
+    return { outcome: 'victory', enemyLosses: 0, cityLosses: 0, damagedBuildingIds: [], burningBuildingIds: [] }
+  }
 
   const enemyLosses = Math.min(threat.strength, Math.round(defenseStrength * 0.7))
   const cityLosses = Math.max(2, Math.round(threat.strength * 0.18 - defenseStrength * 0.09))
@@ -447,6 +495,19 @@ export function resolveRaid(
   state.people = Math.max(0, state.people - cityLosses)
   state.order = Math.max(0, state.order - (outcome === 'victory' ? 2 : 12))
   if (outcome === 'defeat') state.resources.food = Math.max(0, state.resources.food - 240)
+
+  const distanceToNorthGate = (building: Building) => Math.hypot(building.x - 39, building.y - 7)
+  const defenses = state.buildings
+    .filter((building) => building.kind === 'wall' || building.kind === 'watchtower')
+    .sort((left, right) => distanceToNorthGate(left) - distanceToNorthGate(right))
+  const civilian = state.buildings
+    .filter((building) => !['road', 'wall', 'watchtower', 'townHall'].includes(building.kind))
+    .sort((left, right) => distanceToNorthGate(left) - distanceToNorthGate(right))
+  const targets = [...defenses.slice(0, outcome === 'victory' ? 2 : 3), ...civilian.slice(0, outcome === 'victory' ? 1 : 3)]
+  const damagedBuildingIds = targets.map((building) => building.id)
+  const burningBuildingIds = civilian.slice(0, outcome === 'victory' ? 1 : 3).map((building) => building.id)
+  const damage = outcome === 'victory' ? 8 : 28
+  for (const building of targets) building.health = Math.max(10, building.health - damage)
   state.events.push({
     id: state.nextId++,
     day: state.day,
@@ -454,7 +515,33 @@ export function resolveRaid(
     text: outcome === 'victory' ? 'Дружина удержала Северные ворота.' : 'Враги прорвались к городским амбарам.',
     tone: outcome === 'victory' ? 'good' : 'danger',
   })
-  return { outcome, enemyLosses, cityLosses }
+  return { outcome, enemyLosses, cityLosses, damagedBuildingIds, burningBuildingIds }
+}
+
+function applyCrisisConsequences(state: GameState): void {
+  for (const crisis of [...state.crises]) {
+    if (crisis.pressure < 60) continue
+    if (crisis.kind === 'famine') {
+      state.order = Math.max(0, state.order - 2)
+      if (crisis.pressure >= 100) {
+        state.people = Math.max(0, state.people - 4)
+        crisis.pressure = 74
+        state.events.push({ id: state.nextId++, day: state.day, title: 'Смерть у хлебных лавок', text: 'Голод унёс жизни и ожесточил посад.', tone: 'danger' })
+      }
+    } else if (crisis.kind === 'rebellion') {
+      state.legitimacy = Math.max(0, state.legitimacy - 2)
+      if (crisis.pressure >= 100) {
+        state.people = Math.max(0, state.people - 6)
+        crisis.pressure = 72
+        state.events.push({ id: state.nextId++, day: state.day, title: 'Баррикады на Мессе', text: 'Мятежники удерживают городской квартал.', tone: 'danger' })
+      }
+    } else if (crisis.pressure >= 100) {
+      state.crises.splice(state.crises.indexOf(crisis), 1)
+      state.legitimacy = 35
+      state.order = Math.max(0, state.order - 15)
+      state.events.push({ id: state.nextId++, day: state.day, title: 'Дворцовый переворот', text: 'Знать сменила стратега и потребовала новых клятв.', tone: 'danger' })
+    }
+  }
 }
 
 export function advanceGame(state: GameState, days = 1): void {
@@ -475,7 +562,7 @@ export function advanceGame(state: GameState, days = 1): void {
       state.resources.food = 0
       state.order = Math.max(0, state.order - 4)
       const famine = state.crises.find((crisis) => crisis.kind === 'famine')
-      if (famine) famine.pressure += 14
+      if (famine) famine.pressure = Math.min(100, famine.pressure + 14)
       else if (state.day >= 7) {
         state.crises.push({ id: state.nextId++, kind: 'famine', pressure: 30 })
         state.events.push({ id: state.nextId++, day: state.day, title: 'Голод в посаде', text: 'Пустые амбары вызывают беспорядки.', tone: 'danger' })
@@ -488,6 +575,7 @@ export function advanceGame(state: GameState, days = 1): void {
     if (state.legitimacy < 25) {
       escalateCrisis(state, 'coup', 'Заговор знати', 'Часть бояр обсуждает смену правителя за закрытыми дверями.')
     }
+    applyCrisisConsequences(state)
 
     for (const threat of state.threats) {
       const age = state.day - threat.formedDay

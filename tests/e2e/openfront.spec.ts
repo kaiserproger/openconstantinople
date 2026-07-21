@@ -57,6 +57,8 @@ test('builds, rotates, saves, reloads, and fights on the live voxel map', async 
 
   await page.locator('[data-action="attack"]').click()
   await expect(page.getByTestId('voxel-world')).toHaveAttribute('data-battle', 'true')
+  await expect(page.getByTestId('voxel-world')).toHaveAttribute('data-battle-outcome', 'victory')
+  await expect(page.getByTestId('battle-report')).toContainText('Схватка у Северных ворот')
   await expect(page.getByTestId('notice')).toContainText('Налёт отбит')
   expect(errors).toEqual([])
 })

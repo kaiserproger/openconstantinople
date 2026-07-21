@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { vi } from 'vitest'
 import App from '../src/App.vue'
 import GameWorld from '../src/components/GameWorld.vue'
 
@@ -8,6 +9,7 @@ describe('Openfront shell', () => {
     expect(wrapper.find('[data-testid="game-shell"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('Порфирополис')
     expect(wrapper.text()).not.toMatch(/[▶⏸⚒⚔]/u)
+    expect(wrapper.get('[data-testid="realm-outlook"]').text()).toContain('+16 в день')
   })
 
   it('keeps Byzantine chrome compact and opens one edge drawer on demand', async () => {
@@ -78,6 +80,7 @@ describe('Openfront shell', () => {
     world.vm.$emit('select', 5)
     await wrapper.vm.$nextTick()
     expect(wrapper.get('[data-testid="edge-drawer"]').text()).toContain('Инсула')
+    expect(wrapper.get('[data-testid="edge-drawer"]').text()).toContain('Жильё горожан')
 
     await wrapper.get('[data-action="demolish-building"]').trigger('click')
 
@@ -103,8 +106,31 @@ describe('Openfront shell', () => {
 
     expect(wrapper.get('[data-testid="notice"]').text()).toContain('Налёт отбит')
     expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-battle')).toBe('true')
+    expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-battle-outcome')).toBe('victory')
+    expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-fires')).toBe('1')
+    expect(wrapper.get('[data-testid="battle-report"]').text()).toContain('Схватка у Северных ворот')
+    expect(wrapper.get('[data-action="attack"]').attributes('disabled')).toBeDefined()
     expect(wrapper.findAll('[data-testid="friendly-unit"]')).toHaveLength(0)
     expect(wrapper.findAll('[data-testid="enemy-unit"]')).toHaveLength(0)
+  })
+
+  it('removes a defeated external threat after the visible retreat', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(App)
+    try {
+      await wrapper.get('[data-action="attack"]').trigger('click')
+      expect(wrapper.find('.raid-marker').exists()).toBe(true)
+
+      await vi.advanceTimersByTimeAsync(4800)
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.get('[data-testid="voxel-world"]').attributes('data-battle')).toBe('false')
+      expect(wrapper.find('.raid-marker').exists()).toBe(false)
+      expect(wrapper.get('[data-action="attack"]').text()).toContain('Угроз нет')
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('creates a new procedural valley and keeps a local save', async () => {

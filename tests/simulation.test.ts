@@ -10,6 +10,7 @@ import {
   repairBuilding,
   resolveRaid,
   revealThreat,
+  settlementOutlook,
 } from '../src/game/simulation'
 
 describe('procedural valley', () => {
@@ -197,6 +198,24 @@ describe('settlement simulation', () => {
     expect(state.order).toBeLessThan(72)
   })
 
+  it('explains whether stores are growing or how many days remain', () => {
+    const state = createGame('outlook')
+    const secure = settlementOutlook(state)
+
+    expect(secure.dailyFood).toBeGreaterThan(0)
+    expect(secure.reserveDays).toBeNull()
+    expect(secure.level).toBe('secure')
+
+    state.people = 240
+    state.resources.food = 90
+    state.buildings.filter((building) => building.kind === 'farm').forEach((building) => { building.progress = 0 })
+    const shortage = settlementOutlook(state)
+
+    expect(shortage.dailyFood).toBeLessThan(0)
+    expect(shortage.reserveDays).toBe(3)
+    expect(shortage.level).toBe('critical')
+  })
+
   it('lets the court fund famine relief with an explicit treasury cost', () => {
     const state = createGame('famine-relief')
     state.resources.food = 0
@@ -231,6 +250,32 @@ describe('settlement simulation', () => {
 
     expect(addressCrisis(state, 502)).toEqual({ ok: false, reason: 'В казне недостаточно средств' })
     expect(state).toEqual(before)
+  })
+
+  it('offers a hardline crisis response with a political cost instead of a treasury cost', () => {
+    const state = createGame('hardline')
+    state.crises.push({ id: 503, kind: 'rebellion', pressure: 28 })
+
+    const result = addressCrisis(state, 503, 'hardline')
+
+    expect(result).toMatchObject({ ok: true, resolved: true })
+    expect(state.resources.silver).toBe(92)
+    expect(state.people).toBe(95)
+    expect(state.legitimacy).toBe(59)
+    expect(state.order).toBe(80)
+  })
+
+  it('lets an ignored coup become an actual change of regime', () => {
+    const state = createGame('overthrow')
+    state.legitimacy = 20
+    state.order = 50
+    state.crises.push({ id: 504, kind: 'coup', pressure: 96 })
+
+    advanceGame(state)
+
+    expect(state.crises.some((crisis) => crisis.kind === 'coup')).toBe(false)
+    expect(state.legitimacy).toBe(35)
+    expect(state.events.at(-1)?.title).toBe('Дворцовый переворот')
   })
 
   it('escalates low order into rebellion and low legitimacy into a coup', () => {
@@ -292,9 +337,16 @@ describe('dynamic threat director', () => {
 
     const result = resolveRaid(state, threat.id, 68)
 
-    expect(result).toEqual({ outcome: 'victory', enemyLosses: 48, cityLosses: 9 })
+    expect(result).toMatchObject({ outcome: 'victory', enemyLosses: 48, cityLosses: 9 })
+    expect(result.damagedBuildingIds.length).toBeGreaterThan(0)
+    expect(result.burningBuildingIds.length).toBe(1)
+    expect(state.buildings.some((building) => result.damagedBuildingIds.includes(building.id) && building.health < 100)).toBe(true)
     expect(threat.status).toBe('withdrawing')
     expect(state.people).toBe(89)
     expect(state.events.at(-1)?.title).toBe('Налёт отбит')
+
+    const afterBattle = structuredClone(state)
+    expect(resolveRaid(state, threat.id, 68)).toMatchObject({ enemyLosses: 0, cityLosses: 0, damagedBuildingIds: [] })
+    expect(state).toEqual(afterBattle)
   })
 })

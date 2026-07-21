@@ -7,6 +7,8 @@ describe('civilization presets', () => {
     expect(byzantineMacedonian.buildings.townHall).toBe('Дворец стратега')
     expect(byzantineMacedonian.units.retinue).toBe('Тагма')
     expect(byzantineMacedonian.crises.coup.action).toBe('Принять клятвы')
+    expect(byzantineMacedonian.crises.coup.alternative).toBe('Арестовать заговорщиков')
+    expect(byzantineMacedonian.buildingDetails.house.role).toBe('Жильё горожан')
     expect(byzantineMacedonian.threats).toEqual(expect.arrayContaining([
       'Сельджукский бейлик',
       'Славянский союз',

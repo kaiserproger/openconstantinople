@@ -1,6 +1,21 @@
 import * as THREE from 'three'
 import type { MaterialKey, VoxelModel } from '../voxel/types'
-import { createMaterial } from '../voxel/palette'
+import { createMaterial, materialColor } from '../voxel/palette'
+
+const BATTLE_PALETTE: Record<MaterialKey, MaterialKey> = {
+  earth: 'earth',
+  grass: 'grass',
+  water: 'water',
+  marble: 'marble',
+  brick: 'brick',
+  roof: 'brick',
+  timber: 'earth',
+  gold: 'gold',
+  porphyry: 'porphyry',
+  iron: 'porphyry',
+  foliage: 'grass',
+  fire: 'fire',
+}
 
 export class VoxelBatch {
   private readonly entries = new Map<MaterialKey, THREE.Matrix4[]>()
@@ -19,13 +34,31 @@ export class VoxelBatch {
     }
   }
 
-  commit(scene: THREE.Scene): THREE.InstancedMesh[] {
+  commit(scene: THREE.Object3D): THREE.InstancedMesh[] {
     return [...this.entries].map(([key, matrices]) => {
       const mesh = new THREE.InstancedMesh(this.geometry, createMaterial(key), matrices.length)
       matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix))
       mesh.instanceMatrix.needsUpdate = true
       mesh.castShadow = key !== 'water'
       mesh.receiveShadow = true
+      scene.add(mesh)
+      return mesh
+    })
+  }
+
+  commitBattle(scene: THREE.Object3D, tint?: MaterialKey): THREE.InstancedMesh[] {
+    const groups = new Map<MaterialKey, THREE.Matrix4[]>()
+    for (const [key, matrices] of this.entries) {
+      const group = tint ?? BATTLE_PALETTE[key]
+      groups.set(group, [...(groups.get(group) ?? []), ...matrices])
+    }
+    return [...groups].map(([key, matrices]) => {
+      const material = new THREE.MeshBasicMaterial({ color: materialColor(key), toneMapped: false })
+      const mesh = new THREE.InstancedMesh(this.geometry, material, matrices.length)
+      matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix))
+      mesh.instanceMatrix.needsUpdate = true
+      mesh.castShadow = false
+      mesh.receiveShadow = false
       scene.add(mesh)
       return mesh
     })

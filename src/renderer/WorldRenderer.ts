@@ -11,10 +11,27 @@ import { SceneMetrics } from './SceneMetrics'
 import { VoxelBatch } from './VoxelBatch'
 
 const MAX_PIXEL_RATIO = 1.5
+const BATTLE_PIXEL_RATIO = 1
+const STRESS_BATTLE_PIXEL_RATIO = 0.36
 const MAX_PATH_PREVIEW = 64
+const BATTLE_DURATION_MS = 4600
 
-function terrainModel(seed: string): VoxelModel {
+function terrainModel(seed: string, tactical = false): VoxelModel {
   const terrain = generateTerrain(seed)
+  if (tactical) {
+    const water = terrain.tiles
+      .filter((tile) => tile.biome === 'water')
+      .map((tile) => ({ x: tile.x, y: -0.02, z: tile.z, material: 'water' as const, scale: [1.04, 0.34, 1.04] as [number, number, number] }))
+    return {
+      id: `terrain:${seed}:tactical`,
+      footprint: [64, 64],
+      anchor: [32, 0, 32],
+      voxels: [
+        { x: 31.5, y: -0.48, z: 31.5, material: 'grass', scale: [64, 1, 64] },
+        ...water,
+      ],
+    }
+  }
   const voxels: VoxelModel['voxels'] = []
   for (const tile of terrain.tiles) {
     const material = tile.biome === 'stone' ? 'marble' : tile.biome === 'forest' ? 'grass' : tile.biome
@@ -27,6 +44,52 @@ function terrainModel(seed: string): VoxelModel {
     }
   }
   return { id: `terrain:${seed}`, footprint: [64, 64], anchor: [32, 0, 32], voxels }
+}
+
+function fireModel(seed: number): VoxelModel {
+  const offset = (seed % 3) * 0.12
+  return {
+    id: `fire:${seed}`,
+    footprint: [1, 1],
+    anchor: [0, 0, 0],
+    voxels: [
+      { x: -0.22, y: 0.42, z: 0.12, material: 'fire', scale: [0.42, 0.84, 0.42] },
+      { x: 0.2, y: 0.58 + offset, z: -0.1, material: 'fire', scale: [0.36, 1.15, 0.36] },
+      { x: 0, y: 1.08, z: 0, material: 'gold', scale: [0.22, 0.72, 0.22] },
+    ],
+  }
+}
+
+function tacticalBuildingModel(kind: Building['kind'], source: VoxelModel): VoxelModel {
+  const [width, depth] = source.footprint
+  const x = (width - 1) / 2
+  const z = (depth - 1) / 2
+  const model = (voxels: VoxelModel['voxels']): VoxelModel => ({ ...source, voxels })
+  if (kind === 'road') return model([{ x, y: 0, z, material: 'marble', scale: [0.92, 0.16, 0.92] }])
+  if (kind === 'wall') return model([{ x, y: 1.7, z, material: 'marble', scale: [0.96, 3.4, 0.96] }])
+  if (kind === 'farm') return model([
+    { x, y: 0, z, material: 'earth', scale: [width - 0.3, 0.18, depth - 0.3] },
+    { x: 1.5, y: 0.35, z, material: 'gold', scale: [0.65, 0.45, depth - 1] },
+    { x: width - 1.5, y: 1.25, z: depth - 1.4, material: 'roof', scale: [2.2, 2.4, 1.8] },
+  ])
+  if (kind === 'watchtower') return model([
+    { x, y: 3.8, z, material: 'marble', scale: [3.3, 7.6, 3.3] },
+    { x, y: 8.1, z, material: 'gold', scale: [3.7, 0.7, 3.7] },
+  ])
+  if (kind === 'townHall') return model([
+    { x, y: 1.7, z, material: 'brick', scale: [width - 0.8, 3.4, depth - 0.8] },
+    { x, y: 4.4, z, material: 'marble', scale: [4.8, 5.2, 4.5] },
+    { x, y: 7.5, z, material: 'porphyry', scale: [4.2, 1.7, 4.2] },
+    { x, y: 8.6, z, material: 'gold', scale: [1.1, 1.1, 1.1] },
+  ])
+  const bodyMaterial = kind === 'lumberCamp' ? 'timber' : kind === 'quarry' || kind === 'granary' ? 'marble' : 'brick'
+  const accentMaterial = kind === 'granary' ? 'gold' : kind === 'smithy' ? 'iron' : kind === 'market' || kind === 'barracks' ? 'porphyry' : 'roof'
+  const bodyHeight = kind === 'barracks' || kind === 'granary' ? 3.8 : 3
+  return model([
+    { x, y: bodyHeight / 2, z, material: bodyMaterial, scale: [Math.max(2, width - 1.2), bodyHeight, Math.max(2, depth - 1.2)] },
+    { x, y: bodyHeight + 0.7, z, material: accentMaterial, scale: [Math.max(2.2, width - 0.8), 1.15, Math.max(2.2, depth - 0.8)] },
+    { x: x + width * 0.25, y: bodyHeight + 1.8, z, material: accentMaterial, scale: [0.5, 2.4, 0.5] },
+  ])
 }
 
 export interface BattleRenderUnit {
@@ -48,6 +111,9 @@ export class WorldRenderer {
   private readonly picking: PickingController
   private readonly metrics: SceneMetrics
   private worldMeshes: THREE.InstancedMesh[] = []
+  private battleMeshes: THREE.InstancedMesh[] = []
+  private friendlyFormation: THREE.Group | null = null
+  private enemyFormation: THREE.Group | null = null
   private readonly preview: THREE.Mesh
   private readonly pathPreview: THREE.InstancedMesh
   private readonly pickerGeometry = new THREE.BoxGeometry(1, 1, 1)
@@ -60,6 +126,9 @@ export class WorldRenderer {
   private seed = ''
   private buildings: Building[] = []
   private battleVisible = false
+  private battleOutcome: 'victory' | 'defeat' | null = null
+  private battleStartedAt = 0
+  private burningBuildingIds: number[] = []
   private stressMode = false
   private visibleUnits = 0
   private paused = false
@@ -119,14 +188,32 @@ export class WorldRenderer {
     this.animate()
   }
 
-  setWorld(seed: string, buildings: Building[], battleVisible: boolean, stressMode: boolean): void {
+  setWorld(
+    seed: string,
+    buildings: Building[],
+    battleVisible: boolean,
+    stressMode: boolean,
+    battleOutcome: 'victory' | 'defeat' | null,
+    burningBuildingIds: number[],
+  ): void {
     const buildingsChanged = this.buildings.length !== buildings.length
-      || this.buildings.some((building, index) => building.id !== buildings[index]?.id)
-    if (this.seed === seed && !buildingsChanged && this.battleVisible === battleVisible && this.stressMode === stressMode) return
+      || this.buildings.some((building, index) => {
+        const next = buildings[index]
+        return building.id !== next?.id || building.health !== next.health || building.progress !== next.progress
+      })
+    const firesChanged = this.burningBuildingIds.join(',') !== burningBuildingIds.join(',')
+    if (this.seed === seed && !buildingsChanged && this.battleVisible === battleVisible && this.stressMode === stressMode
+      && this.battleOutcome === battleOutcome && !firesChanged) return
+    const battleVisibilityChanged = battleVisible !== this.battleVisible
+    const battleStarted = battleVisible && !this.battleVisible
     this.seed = seed
     this.buildings = buildings.map((building) => ({ ...building }))
     this.battleVisible = battleVisible
     this.stressMode = stressMode
+    this.battleOutcome = battleOutcome
+    this.burningBuildingIds = [...burningBuildingIds]
+    if (battleStarted) this.battleStartedAt = performance.now()
+    if (battleVisibilityChanged) this.resize()
     this.rebuild()
     this.invalidate()
   }
@@ -134,7 +221,10 @@ export class WorldRenderer {
   resize(): void {
     const width = Math.max(1, this.canvas.clientWidth || this.canvas.width || 1)
     const height = Math.max(1, this.canvas.clientHeight || this.canvas.height || 1)
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO))
+    const pixelRatioCap = this.battleVisible
+      ? this.stressMode ? STRESS_BATTLE_PIXEL_RATIO : BATTLE_PIXEL_RATIO
+      : MAX_PIXEL_RATIO
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap))
     this.renderer.setSize(width, height, false)
     this.cameraController.resize({ width, height })
     this.invalidate()
@@ -264,11 +354,17 @@ export class WorldRenderer {
   private rebuild(): void {
     this.disposeWorld()
     const batch = new VoxelBatch()
-    batch.add(terrainModel(this.seed))
+    batch.add(terrainModel(this.seed, this.battleVisible && this.stressMode))
     for (const building of this.buildings) {
-      const model = generateBuilding(building.kind, `${this.seed}:${building.id}`, byzantineMacedonian)
+      const detailedModel = generateBuilding(building.kind, `${this.seed}:${building.id}`, byzantineMacedonian)
+      const model = this.battleVisible && this.stressMode
+        ? tacticalBuildingModel(building.kind, detailedModel)
+        : detailedModel
       batch.add(model, new THREE.Vector3(building.x - model.anchor[0], 1.5, building.y - model.anchor[2]))
       const height = Math.max(0.22, ...model.voxels.map((voxel) => voxel.y + (voxel.scale?.[1] ?? 1) / 2))
+      if (this.burningBuildingIds.includes(building.id)) {
+        batch.add(fireModel(building.id), new THREE.Vector3(building.x, 1.5 + height, building.y))
+      }
       const picker = new THREE.Mesh(this.pickerGeometry, this.pickerMaterial)
       picker.position.set(building.x, 1.5 + height / 2, building.y)
       picker.scale.set(Math.max(0.8, model.footprint[0]), height, Math.max(0.8, model.footprint[1]))
@@ -277,20 +373,49 @@ export class WorldRenderer {
       this.buildingPickers.push(picker)
       this.scene.add(picker)
     }
-    if (this.battleVisible) {
-      const count = this.stressMode ? 150 : 18
-      for (let index = 0; index < count; index += 1) {
-        const column = index % 20
-        const row = Math.floor(index / 20)
-        batch.add(generateUnitModel(index % 5 === 0 ? 'retinue' : 'militia', 'friendly'), new THREE.Vector3(34 + column * 0.78, 1.5, 25 + row * 0.8))
-        batch.add(generateUnitModel('raider', 'enemy'), new THREE.Vector3(47 + column * 0.78, 1.5, 14 + row * 0.8))
-      }
-      this.visibleUnits = count * 2
-    } else {
-      this.visibleUnits = 0
-    }
-    this.worldMeshes = batch.commit(this.scene)
+    this.worldMeshes = this.battleVisible ? batch.commitBattle(this.scene) : batch.commit(this.scene)
+    if (this.battleVisible) this.rebuildBattle()
+    else this.visibleUnits = 0
     this.setSelectedBuilding(this.selectedBuildingId)
+  }
+
+  private rebuildBattle(): void {
+    const count = this.stressMode ? 150 : 24
+    const columns = this.stressMode ? 15 : 6
+    const spacing = this.stressMode ? 0.7 : 1.05
+    const rows = Math.ceil(count / columns)
+    const friendlyBatch = new VoxelBatch()
+    const enemyBatch = new VoxelBatch()
+    for (let index = 0; index < count; index += 1) {
+      const column = index % columns
+      const row = Math.floor(index / columns)
+      const origin = new THREE.Vector3(column * spacing, 0, (row - (rows - 1) / 2) * spacing)
+      friendlyBatch.add(generateUnitModel(index % 5 === 0 ? 'retinue' : 'militia', 'friendly', this.stressMode), origin)
+      enemyBatch.add(generateUnitModel('raider', 'enemy', this.stressMode), origin)
+    }
+    this.friendlyFormation = new THREE.Group()
+    this.enemyFormation = new THREE.Group()
+    this.battleMeshes = [
+      ...friendlyBatch.commitBattle(this.friendlyFormation, 'porphyry'),
+      ...enemyBatch.commitBattle(this.enemyFormation, 'fire'),
+    ]
+    this.scene.add(this.friendlyFormation, this.enemyFormation)
+    this.visibleUnits = count * 2
+    this.updateBattle(performance.now())
+  }
+
+  private updateBattle(now: number): void {
+    if (!this.battleVisible || !this.friendlyFormation || !this.enemyFormation) return
+    const duration = this.stressMode ? 7600 : BATTLE_DURATION_MS
+    const progress = THREE.MathUtils.clamp((now - this.battleStartedAt) / duration, 0, 1)
+    const approach = THREE.MathUtils.smoothstep(progress, 0, 0.5)
+    const aftermath = THREE.MathUtils.smoothstep(progress, 0.68, 1)
+    const clash = progress > 0.42 && progress < 0.72 ? Math.sin(progress * 95) * 0.16 : 0
+
+    this.friendlyFormation.position.set(20 + approach * 13 + aftermath * 2, 1.5 + Math.abs(clash), 36)
+    const enemyRetreatX = this.battleOutcome === 'victory' ? 13 : -10
+    this.enemyFormation.position.set(48 - approach * 12 + aftermath * enemyRetreatX, 1.5 + Math.abs(clash), 36)
+    if (progress < 1) this.needsRender = true
   }
 
   private disposeWorld(): void {
@@ -301,6 +426,16 @@ export class WorldRenderer {
       materials.forEach((material) => material.dispose())
     }
     this.worldMeshes = []
+    if (this.friendlyFormation) this.scene.remove(this.friendlyFormation)
+    if (this.enemyFormation) this.scene.remove(this.enemyFormation)
+    for (const mesh of this.battleMeshes) {
+      mesh.geometry.dispose()
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+      materials.forEach((material) => material.dispose())
+    }
+    this.battleMeshes = []
+    this.friendlyFormation = null
+    this.enemyFormation = null
     for (const picker of this.buildingPickers) this.scene.remove(picker)
     this.buildingPickers = []
   }
@@ -315,6 +450,7 @@ export class WorldRenderer {
 
   private animate = (): void => {
     this.animationFrame = requestAnimationFrame(this.animate)
+    if (this.battleVisible) this.updateBattle(performance.now())
     if (this.needsRender && !this.paused) {
       this.renderer.render(this.scene, this.camera)
       this.needsRender = false

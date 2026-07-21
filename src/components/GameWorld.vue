@@ -11,7 +11,10 @@ const props = defineProps<{
   selectedTool: BuildingKind | null
   selectedBuildingId: number | null
   buildingNames: Record<BuildingKind, string>
+  buildingDetails: Record<BuildingKind, { role: string; effect: string }>
   battleVisible: boolean
+  battleOutcome: 'victory' | 'defeat' | null
+  burningBuildingIds: number[]
   stressMode: boolean
 }>()
 
@@ -37,7 +40,14 @@ let pointerLast: Point | null = null
 let handledPointerClick = false
 
 function syncWorld(): void {
-  world?.setWorld(props.seed, props.buildings, props.battleVisible, props.stressMode)
+  world?.setWorld(
+    props.seed,
+    props.buildings,
+    props.battleVisible,
+    props.stressMode,
+    props.battleOutcome,
+    props.burningBuildingIds,
+  )
 }
 
 function syncSelection(): void {
@@ -213,7 +223,17 @@ onMounted(async () => {
   }
 })
 
-watch(() => [props.seed, props.buildings.length, props.battleVisible, props.stressMode], syncWorld)
+watch(
+  () => [
+    props.seed,
+    props.buildings.map((building) => `${building.id}:${building.health}:${building.progress}`).join('|'),
+    props.battleVisible,
+    props.stressMode,
+    props.battleOutcome,
+    props.burningBuildingIds.join(','),
+  ],
+  syncWorld,
+)
 watch(() => props.selectedBuildingId, syncSelection)
 
 onBeforeUnmount(() => {
@@ -233,6 +253,8 @@ onBeforeUnmount(() => {
     :class="{ placing: selectedTool, 'line-building': pathDragging }"
     data-testid="voxel-world"
     :data-battle="String(battleVisible)"
+    :data-battle-outcome="battleOutcome ?? 'none'"
+    :data-fires="burningBuildingIds.length"
     :data-tool="selectedTool ?? 'none'"
     :data-quarter="cameraState.quarter"
     :aria-label="selectedTool ? `Изометрическая карта, выбран инструмент: ${selectedTool}` : 'Изометрическая карта, режим осмотра'"
@@ -252,7 +274,7 @@ onBeforeUnmount(() => {
     :style="{ left: `${hoverPosition.x}px`, top: `${hoverPosition.y}px` }"
   >
     <strong>{{ buildingNames[hoveredBuilding.kind] }}</strong>
-    <span>Состояние {{ hoveredBuilding.health }}%</span>
+    <span>{{ buildingDetails[hoveredBuilding.kind].role }} · состояние {{ hoveredBuilding.health }}%</span>
   </div>
   <span
     class="sr-only"

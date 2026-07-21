@@ -5,7 +5,12 @@ import type { BuildingKind } from '../game/simulation'
 import type { CivilizationPreset } from '../presets'
 
 type Mode = 'streets' | 'quarters' | 'production' | 'defense'
-const props = defineProps<{ mode: Mode; selectedTool: BuildingKind | null; preset: CivilizationPreset }>()
+const props = defineProps<{
+  mode: Mode
+  selectedTool: BuildingKind | null
+  preset: CivilizationPreset
+  attackState: 'ready' | 'battle' | 'none'
+}>()
 defineEmits<{ mode: [mode: Mode]; tool: [kind: BuildingKind]; attack: [] }>()
 
 const modes: Array<{ id: Mode; label: string; icon: Component }> = [
@@ -42,7 +47,7 @@ const toolGroups: Record<Mode, Array<{ kind: BuildingKind; icon: Component }>> =
         <component :is="tool.icon" :size="22" /><span>{{ preset.buildings[tool.kind] }}</span>
         <small v-if="tool.kind === 'road' || tool.kind === 'wall'">тянуть линию</small>
       </button>
-      <button class="battle-command" data-action="attack" @click="$emit('attack')"><Swords :size="22" /><span>Отразить налёт</span></button>
+      <button class="battle-command" data-action="attack" :disabled="attackState !== 'ready'" @click="$emit('attack')"><Swords :size="22" /><span>{{ attackState === 'battle' ? 'Бой идёт' : attackState === 'none' ? 'Угроз нет' : 'Отразить налёт' }}</span></button>
     </div>
   </footer>
 </template>

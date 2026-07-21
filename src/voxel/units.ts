@@ -6,6 +6,14 @@ export type UnitFaction = 'friendly' | 'enemy'
 export function generateUnitModel(kind: UnitKind, faction: UnitFaction, distant = false): VoxelModel {
   const accent = faction === 'friendly' ? 'porphyry' : 'brick'
   const metal = kind === 'retinue' ? 'gold' : 'iron'
+  if (distant) {
+    return {
+      id: `${kind}:${faction}:distant`,
+      footprint: [1, 1],
+      anchor: [0, 0, 0],
+      voxels: [{ x: 0, y: 0.9, z: 0, material: accent, scale: [0.62, 1.8, 0.62] }],
+    }
+  }
   const voxels: VoxelModel['voxels'] = [
     { x: -0.16, y: 0.35, z: 0, material: 'timber', scale: [0.22, 0.7, 0.24] },
     { x: 0.16, y: 0.35, z: 0, material: 'timber', scale: [0.22, 0.7, 0.24] },
@@ -13,8 +21,6 @@ export function generateUnitModel(kind: UnitKind, faction: UnitFaction, distant 
     { x: 0, y: 1.64, z: 0, material: 'marble', scale: [0.42, 0.42, 0.42] },
     { x: 0, y: 1.91, z: 0, material: metal, scale: [0.48, 0.18, 0.48] },
   ]
-  if (distant) return { id: `${kind}:${faction}:distant`, footprint: [1, 1], anchor: [0, 0, 0], voxels }
-
   if (kind === 'militia') {
     voxels.push(
       { x: -0.46, y: 1.05, z: 0, material: 'timber', scale: [0.14, 0.8, 0.14] },

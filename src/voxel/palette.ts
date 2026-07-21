@@ -16,6 +16,10 @@ const MATERIAL_COLORS: Record<MaterialKey, number> = {
   fire: 0xe67832,
 }
 
+export function materialColor(key: MaterialKey): number {
+  return MATERIAL_COLORS[key]
+}
+
 export function createMaterial(key: MaterialKey): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
     color: MATERIAL_COLORS[key],

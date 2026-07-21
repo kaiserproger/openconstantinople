@@ -20,6 +20,7 @@ it('applies a court decision through Vue and removes a resolved crisis', async (
 
   await wrapper.get('[data-action="toggle-court"]').trigger('click')
   expect(wrapper.get('[data-crisis="coup"]').text()).toContain('Заговор знати')
+  expect(wrapper.get('[data-crisis="coup"]').text()).toContain('Арестовать заговорщиков')
   expect(wrapper.get('[data-resource="silver"]').text()).toContain('92')
 
   await wrapper.get('[data-action="address-crisis"]').trigger('click')

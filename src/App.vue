@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, reactive, ref } from 'vue'
-import { Hammer, Shield, Trash2 } from '@lucide/vue'
+import { Flame, Hammer, Shield, Trash2, TrendingDown, TrendingUp, Wheat } from '@lucide/vue'
 import EdgeDrawer from './components/EdgeDrawer.vue'
 import GameWorld from './components/GameWorld.vue'
 import ModeBar from './components/ModeBar.vue'
@@ -10,12 +10,15 @@ import {
   advanceGame,
   createGame,
   demolishBuilding,
+  dismissThreat,
   placeBuilding,
   placePath,
   repairBuilding,
   revealThreat,
   resolveRaid,
+  settlementOutlook,
   type BuildingKind,
+  type CrisisResponse,
 } from './game/simulation'
 import { decodeSave, encodeSave } from './game/persistence'
 import { byzantineMacedonian } from './presets'
@@ -33,12 +36,23 @@ const selectedBuildingId = ref<number | null>(null)
 const speed = ref<0 | 1 | 4>(1)
 const notice = ref('Выберите раздел строительства или осмотрите город')
 const battleVisible = ref(false)
+const battleOutcome = ref<'victory' | 'defeat' | null>(null)
+const burningBuildingIds = ref<number[]>([])
 const gameWorld = ref<InstanceType<typeof GameWorld> | null>(null)
 const stressMode = new URLSearchParams(window.location.search).has('stress')
 let worldCounter = 1
+let battleTimer = 0
 
 const primaryThreat = computed(() => game.threats.find((threat) => threat.status !== 'disbanded'))
 const selectedBuilding = computed(() => game.buildings.find((building) => building.id === selectedBuildingId.value) ?? null)
+const outlook = computed(() => settlementOutlook(game))
+const threatStatus = computed(() => ({
+  forming: 'собирает силы',
+  approaching: 'движется к городу',
+  raiding: 'штурмует посад',
+  withdrawing: 'отступает',
+  disbanded: 'рассеян',
+}[primaryThreat.value?.status ?? 'forming']))
 const constructionHint = computed(() => {
   if (!selectedTool.value) return null
   const name = byzantineMacedonian.buildings[selectedTool.value]
@@ -96,11 +110,25 @@ function defendCity(): void {
     notice.value = 'Разведка не видит доступных целей'
     return
   }
+  if (battleVisible.value || primaryThreat.value.status === 'withdrawing') {
+    notice.value = 'Сражение уже идёт'
+    return
+  }
+  window.clearTimeout(battleTimer)
   battleVisible.value = true
   const result = resolveRaid(game, primaryThreat.value.id, 68)
+  const threatId = primaryThreat.value.id
+  battleOutcome.value = result.outcome
+  burningBuildingIds.value = result.burningBuildingIds
   notice.value = result.outcome === 'victory'
     ? `Налёт отбит · враг потерял ${result.enemyLosses}, город — ${result.cityLosses}`
     : `Посад прорван · потери ${result.cityLosses}`
+  battleTimer = window.setTimeout(() => {
+    battleTimer = 0
+    battleVisible.value = false
+    burningBuildingIds.value = []
+    if (result.outcome === 'victory') dismissThreat(game, threatId, 'defeat')
+  }, stressMode ? 8000 : 4800)
 }
 
 function toggleDrawer(drawer: Drawer): void {
@@ -147,8 +175,8 @@ function demolishSelected(): void {
   if (result.ok) closeObjectDrawer()
 }
 
-function handleCrisis(crisisId: number): void {
-  const result = addressCrisis(game, crisisId)
+function handleCrisis(crisisId: number, response: CrisisResponse = 'fund'): void {
+  const result = addressCrisis(game, crisisId, response)
   notice.value = result.ok ? result.summary : result.reason
 }
 
@@ -172,26 +200,37 @@ function loadSettlement(): void {
     return
   }
   Object.assign(game, result.state)
+  window.clearTimeout(battleTimer)
+  battleTimer = 0
   closeObjectDrawer()
   battleVisible.value = false
+  battleOutcome.value = null
+  burningBuildingIds.value = []
   notice.value = 'Летопись княжества восстановлена'
   void nextTick(() => gameWorld.value?.restoreCamera(result.meta.camera))
 }
 
 function newWorld(): void {
+  window.clearTimeout(battleTimer)
+  battleTimer = 0
   const next = createGame(`porphyry-${17 + worldCounter}`)
   worldCounter += 1
   Object.assign(game, next)
   closeObjectDrawer()
   revealThreat(game, worldCounter % 2 === 0 ? 'scouts' : 'raiders', 34 + worldCounter * 7)
   battleVisible.value = false
+  battleOutcome.value = null
+  burningBuildingIds.value = []
   notice.value = `Открыта новая фема · ${game.map.seed}`
 }
 
 const timer = window.setInterval(() => {
   if (speed.value > 0) advanceGame(game, speed.value)
 }, 3500)
-onUnmounted(() => window.clearInterval(timer))
+onUnmounted(() => {
+  window.clearInterval(timer)
+  window.clearTimeout(battleTimer)
+})
 </script>
 
 <template>
@@ -204,7 +243,10 @@ onUnmounted(() => window.clearInterval(timer))
         :selected-tool="selectedTool"
         :selected-building-id="selectedBuildingId"
         :building-names="byzantineMacedonian.buildings"
+        :building-details="byzantineMacedonian.buildingDetails"
         :battle-visible="battleVisible"
+        :battle-outcome="battleOutcome"
+        :burning-building-ids="burningBuildingIds"
         :stress-mode="stressMode"
         @build="buildAt"
         @build-path="buildPath"
@@ -214,7 +256,14 @@ onUnmounted(() => window.clearInterval(timer))
       <div class="world-vignette"></div>
       <div v-if="primaryThreat" class="raid-marker">
         <Shield :size="18" />
-        <div><strong>{{ byzantineMacedonian.threats[0] }}</strong><span>Конница · сила около {{ primaryThreat.strength }}</span></div>
+        <div><strong>{{ byzantineMacedonian.threats[0] }}</strong><span>{{ threatStatus }} · сила около {{ primaryThreat.strength }}</span></div>
+      </div>
+      <div :class="['realm-outlook', outlook.level]" data-testid="realm-outlook">
+        <Wheat :size="17" />
+        <div><strong>Амбары</strong><span v-if="outlook.reserveDays === null"><TrendingUp :size="12" /> +{{ outlook.dailyFood }} в день</span><span v-else><TrendingDown :size="12" /> {{ outlook.reserveDays }} дн. · {{ outlook.dailyFood }} в день</span></div>
+      </div>
+      <div v-if="battleVisible" class="battle-report" data-testid="battle-report">
+        <Flame :size="17" /><div><strong>Схватка у Северных ворот</strong><span>{{ battleOutcome === 'victory' ? 'Враг дрогнул и отходит' : 'Налётчики рвутся к амбарам' }}</span></div>
       </div>
       <div class="town-label"><span>{{ byzantineMacedonian.cityName }}</span><i>Порядок {{ game.order }} · легитимность {{ game.legitimacy }}</i></div>
       <div v-if="constructionHint" class="construction-hint" data-testid="construction-hint">{{ constructionHint }}</div>
@@ -258,8 +307,10 @@ onUnmounted(() => window.clearInterval(timer))
       <article v-for="crisis in game.crises" :key="crisis.id" class="crisis-card" :data-crisis="crisis.kind">
         <header><strong>{{ byzantineMacedonian.crises[crisis.kind].title }}</strong><span>{{ crisis.pressure }}</span></header>
         <div class="crisis-pressure"><i :style="{ width: `${crisis.pressure}%` }"></i></div>
-        <small>{{ byzantineMacedonian.crises[crisis.kind].cost }}</small>
-        <button data-action="address-crisis" @click="handleCrisis(crisis.id)">{{ byzantineMacedonian.crises[crisis.kind].action }}</button>
+        <div class="crisis-actions">
+          <button data-action="address-crisis" @click="handleCrisis(crisis.id, 'fund')"><span>{{ byzantineMacedonian.crises[crisis.kind].action }}</span><small>{{ byzantineMacedonian.crises[crisis.kind].cost }}</small></button>
+          <button data-action="address-crisis-hardline" @click="handleCrisis(crisis.id, 'hardline')"><span>{{ byzantineMacedonian.crises[crisis.kind].alternative }}</span><small>{{ byzantineMacedonian.crises[crisis.kind].alternativeCost }}</small></button>
+        </div>
       </article>
     </EdgeDrawer>
 
@@ -276,6 +327,7 @@ onUnmounted(() => window.clearInterval(timer))
           <div><dt>Координаты</dt><dd>{{ selectedBuilding.x }} · {{ selectedBuilding.y }}</dd></div>
         </dl>
         <div class="condition-track"><i :style="{ width: `${selectedBuilding.health}%` }"></i></div>
+        <div class="object-purpose"><strong>{{ byzantineMacedonian.buildingDetails[selectedBuilding.kind].role }}</strong><span>{{ byzantineMacedonian.buildingDetails[selectedBuilding.kind].effect }}</span></div>
         <p>Расход ремонта зависит от повреждений. При разборе четверть пригодных материалов возвращается на склад.</p>
         <div class="object-actions">
           <button data-action="repair-building" :disabled="selectedBuilding.health >= 100" @click="repairSelected">
@@ -292,6 +344,7 @@ onUnmounted(() => window.clearInterval(timer))
     <ModeBar
       :mode="mode"
       :selected-tool="selectedTool"
+      :attack-state="battleVisible || primaryThreat?.status === 'withdrawing' ? 'battle' : primaryThreat ? 'ready' : 'none'"
       :preset="byzantineMacedonian"
       @mode="chooseMode"
       @tool="chooseTool"

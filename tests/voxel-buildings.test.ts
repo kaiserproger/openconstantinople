@@ -35,6 +35,26 @@ it('batches repeated voxels into one instanced mesh per material', () => {
   expect(scene.children).toHaveLength(2)
 })
 
+it('can collapse a moving formation into one faction-colored draw batch', () => {
+  const scene = new THREE.Scene()
+  const batch = new VoxelBatch()
+  batch.add({
+    id: 'battle',
+    footprint: [1, 1],
+    anchor: [0, 0, 0],
+    voxels: [
+      { x: 0, y: 0, z: 0, material: 'porphyry' },
+      { x: 0, y: 1, z: 0, material: 'gold' },
+      { x: 1, y: 0, z: 0, material: 'brick' },
+    ],
+  })
+
+  const meshes = batch.commitBattle(scene, 'porphyry')
+
+  expect(meshes).toHaveLength(1)
+  expect(meshes[0]?.count).toBe(3)
+})
+
 const buildingKinds: BuildingKind[] = [
   'road',
   'house',
@@ -65,6 +85,14 @@ it('gives civic architecture a stronger silhouette than housing', () => {
     Math.max(...house.voxels.map((voxel) => voxel.y)),
   )
   expect(palace.voxels.filter((voxel) => voxel.material === 'gold').length).toBeGreaterThan(0)
+})
+
+it('uses part of a housing footprint as a visible courtyard instead of one solid block', () => {
+  const house = generateBuilding('house', 'courtyard', byzantineMacedonian)
+
+  expect(house.footprint).toEqual([5, 4])
+  expect(house.voxels.some((voxel) => voxel.material === 'grass')).toBe(true)
+  expect(house.voxels.some((voxel) => voxel.material === 'timber' && voxel.y < 1)).toBe(true)
 })
 
 it('uses cell-sized linear pieces and semantic details instead of oversized slabs', () => {
