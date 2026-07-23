@@ -361,3 +361,53 @@ describe('dynamic threat director', () => {
     expect(recommendedCrisisResponse(state, crisis)).toBe('hardline')
   })
 })
+
+describe('campaign event bridge', () => {
+  it('marks an AI conquest of the player border as a defeat', () => {
+    const state = createGame('ai-border-defeat')
+    const source = state.campaign.provinces.find((candidate) => (
+      candidate.owner === 'seljuk'
+      && state.campaign.provinces.some((target) => (
+        target.owner !== 'seljuk'
+        && Math.abs(candidate.column - target.column) + Math.abs(candidate.row - target.row) === 1
+      ))
+    ))!
+    const target = state.campaign.provinces.find((candidate) => (
+      candidate.owner !== 'seljuk'
+      && Math.abs(candidate.column - source.column) + Math.abs(candidate.row - source.row) === 1
+    ))!
+    const war = state.campaign.relations.find((relation) => (
+      relation.realmIds.includes('porphyry') && relation.realmIds.includes('seljuk')
+    ))!
+
+    war.status = 'war'
+    war.truceUntil = null
+    target.owner = 'porphyry'
+    target.capitalOf = null
+    for (const province of state.campaign.provinces) {
+      if (province.owner === 'seljuk') province.levies = province.id === source.id ? 300 : 0
+      else province.levies = province.id === target.id ? 0 : 300
+    }
+
+    const departures = advanceGame(state, 4)
+    expect(departures).toContainEqual(expect.objectContaining({
+      kind: 'march-started',
+      actorId: 'seljuk',
+      provinceId: target.id,
+      targetOwner: 'porphyry',
+    }))
+
+    const arrivals = advanceGame(state, 1)
+
+    expect(arrivals).toContainEqual(expect.objectContaining({
+      kind: 'conquest',
+      actorId: 'seljuk',
+      provinceId: target.id,
+      targetOwner: 'porphyry',
+    }))
+    expect(state.events.at(-1)).toMatchObject({
+      title: 'Пограничное поражение',
+      tone: 'danger',
+    })
+  })
+})

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import type { CampaignState } from '../game/campaign'
 import type { Building, BuildingKind, Point } from '../game/simulation'
+import type { BattleFormation, FormationKind } from '../game/tactics'
 import { straightPath } from '../game/constructionPath'
 import type { CameraSnapshot } from '../renderer/CameraController'
 import type { WorldRenderer as WorldRendererType } from '../renderer/WorldRenderer'
@@ -8,6 +10,11 @@ import type { WorldRenderer as WorldRendererType } from '../renderer/WorldRender
 const props = defineProps<{
   seed: string
   buildings: Building[]
+  campaign: CampaignState
+  campaignMode: boolean
+  campaignSourceProvinceId: number | null
+  campaignTargetProvinceId: number | null
+  campaignEventProvinceId: number | null
   selectedTool: BuildingKind | null
   selectedBuildingId: number | null
   buildingNames: Record<BuildingKind, string>
@@ -15,7 +22,9 @@ const props = defineProps<{
   battleVisible: boolean
   battleOutcome: 'victory' | 'defeat' | null
   tacticalCommand: boolean
-  battleCommandPoint: Point | null
+  battleFormations: BattleFormation[]
+  selectedFormationId: FormationKind
+  battleExecuting: boolean
   burningBuildingIds: number[]
   stressMode: boolean
 }>()
@@ -24,6 +33,7 @@ const emit = defineEmits<{
   build: [point: Point]
   buildPath: [points: Point[]]
   select: [buildingId: number]
+  campaignSelect: [point: Point]
   battleCommand: [point: Point]
   cancel: []
   cameraChange: [snapshot: CameraSnapshot]
@@ -46,6 +56,8 @@ function syncWorld(): void {
   world?.setWorld(
     props.seed,
     props.buildings,
+    props.campaignMode,
+    props.campaign,
     props.battleVisible,
     props.stressMode,
     props.battleOutcome,
@@ -55,10 +67,15 @@ function syncWorld(): void {
 
 function syncSelection(): void {
   world?.setSelectedBuilding(props.selectedBuildingId)
+  world?.setCampaignSelection(
+    props.campaign.provinces.find((province) => province.id === props.campaignSourceProvinceId) ?? null,
+    props.campaign.provinces.find((province) => province.id === props.campaignTargetProvinceId) ?? null,
+    props.campaign.provinces.find((province) => province.id === props.campaignEventProvinceId) ?? null,
+  )
 }
 
 function syncBattleCommand(): void {
-  world?.commandBattle(props.battleCommandPoint)
+  world?.setBattlePlan(props.battleFormations, props.selectedFormationId, props.battleExecuting)
 }
 
 function fallbackPick(event: MouseEvent, bounds: DOMRect): Point {
@@ -76,6 +93,7 @@ function build(event: MouseEvent): void {
     return
   }
   if (!canvas.value) return
+  if (props.campaignMode) return
   const bounds = canvas.value.getBoundingClientRect()
   if (!props.selectedTool) return
   const point = world?.pickGrid(event.clientX, event.clientY, bounds) ?? fallbackPick(event, bounds)
@@ -106,7 +124,7 @@ function pointerDown(event: PointerEvent): void {
 }
 
 function pointerMove(event: PointerEvent): void {
-  if (!pointerStart && !props.selectedTool && !props.tacticalCommand && canvas.value) {
+  if (!pointerStart && !props.campaignMode && !props.selectedTool && !props.tacticalCommand && canvas.value) {
     const bounds = canvas.value.getBoundingClientRect()
     hoveredBuildingId.value = world?.pickBuilding(event.clientX, event.clientY, bounds) ?? null
     hoverPosition.x = event.clientX - bounds.left + 14
@@ -133,7 +151,9 @@ function pointerUp(event: PointerEvent): void {
   if (!pointerStart) return
   const end = pointAt(event) ?? pointerStart.point
   const moved = Math.hypot(event.clientX - pointerStart.clientX, event.clientY - pointerStart.clientY)
-  if (props.tacticalCommand && moved <= 4) {
+  if (props.campaignMode && moved <= 4) {
+    emit('campaignSelect', end)
+  } else if (props.tacticalCommand && moved <= 4) {
     emit('battleCommand', end)
   } else if (props.selectedTool === 'road' || props.selectedTool === 'wall') {
     emit('buildPath', straightPath(pointerStart.point, end))
@@ -236,6 +256,13 @@ onMounted(async () => {
 watch(
   () => [
     props.seed,
+    props.campaignMode,
+    props.campaign.winnerRealmId ?? 'active',
+    props.campaign.realms.map((realm) => `${realm.id}:${realm.status}`).join('|'),
+    props.campaign.provinces.map((province) => `${province.id}:${province.owner ?? 'free'}:${province.levies}:${province.cityLevel}:${province.defenseFormation}:${province.capitalOf ?? 'none'}`).join('|'),
+    props.campaign.marches.map((march) => `${march.id}:${march.kind}:${march.route.join('-')}:${march.soldiers}:${march.formation}:${march.departedAt}:${march.arrivesAt}`).join('|'),
+    props.campaign.tradeRoutes.map((route) => `${route.id}:${route.provinceIds.join('-')}`).join('|'),
+    props.campaign.sieges.map((siege) => `${siege.id}:${siege.soldiers}:${siege.tactic}:${siege.progress}`).join('|'),
     props.buildings.map((building) => `${building.id}:${building.health}:${building.progress}`).join('|'),
     props.battleVisible,
     props.stressMode,
@@ -244,8 +271,24 @@ watch(
   ],
   syncWorld,
 )
-watch(() => props.selectedBuildingId, syncSelection)
-watch(() => props.battleCommandPoint, syncBattleCommand)
+watch(
+  () => [
+    props.selectedBuildingId,
+    props.campaignSourceProvinceId,
+    props.campaignTargetProvinceId,
+    props.campaignEventProvinceId,
+    props.campaignMode,
+  ],
+  syncSelection,
+)
+watch(
+  () => [
+    props.selectedFormationId,
+    props.battleExecuting,
+    props.battleFormations.map((formation) => `${formation.id}:${formation.shape}:${formation.target?.x ?? 'x'}:${formation.target?.y ?? 'x'}`).join('|'),
+  ],
+  syncBattleCommand,
+)
 
 onBeforeUnmount(() => {
   disposed = true
@@ -261,16 +304,33 @@ onBeforeUnmount(() => {
   <canvas
     ref="canvas"
     class="voxel-world"
-    :class="{ placing: selectedTool, 'line-building': pathDragging, 'tactical-command': tacticalCommand }"
+    :class="{ placing: selectedTool, 'line-building': pathDragging, 'tactical-command': tacticalCommand, 'campaign-map': campaignMode }"
     data-testid="voxel-world"
     :data-battle="String(battleVisible)"
     :data-battle-outcome="battleOutcome ?? 'none'"
     :data-tactical="String(tacticalCommand)"
-    :data-battle-command="battleCommandPoint ? `${battleCommandPoint.x}:${battleCommandPoint.y}` : 'none'"
+    :data-battle-command="battleFormations.find((formation) => formation.id === selectedFormationId)?.target ? `${battleFormations.find((formation) => formation.id === selectedFormationId)?.target?.x}:${battleFormations.find((formation) => formation.id === selectedFormationId)?.target?.y}` : 'none'"
+    :data-battle-orders="battleFormations.filter((formation) => formation.target).length"
+    :data-battle-executing="String(battleExecuting)"
     :data-fires="burningBuildingIds.length"
     :data-tool="selectedTool ?? 'none'"
     :data-quarter="cameraState.quarter"
-    :aria-label="tacticalCommand ? 'Изометрическая карта, укажите точку обороны' : selectedTool ? `Изометрическая карта, выбран инструмент: ${selectedTool}` : 'Изометрическая карта, режим осмотра'"
+    :data-map-mode="campaignMode ? 'realm' : 'city'"
+    :data-campaign-source-province="campaignSourceProvinceId ?? 'none'"
+    :data-campaign-target-province="campaignTargetProvinceId ?? 'none'"
+    :data-campaign-event-province="campaignEventProvinceId ?? 'none'"
+    :data-campaign-marches="campaign.marches.length"
+    :data-campaign-march-kinds="campaign.marches.map((march) => march.kind).join(',') || 'none'"
+    :data-campaign-march-formations="campaign.marches.map((march) => march.formation).join(',') || 'none'"
+    :data-campaign-march-routes="campaign.marches.map((march) => march.route.join('-')).join(',') || 'none'"
+    :data-campaign-march-legs="campaign.marches.map((march) => march.route.length - 1).join(',') || 'none'"
+    :data-campaign-trade-routes="campaign.tradeRoutes.length"
+    :data-campaign-sieges="campaign.sieges.length"
+    :data-campaign-siege-tactics="campaign.sieges.map((siege) => siege.tactic).join(',') || 'none'"
+    :data-campaign-siege-supplies="campaign.sieges.map((siege) => siege.supplies ?? 0).join(',') || 'none'"
+    :data-campaign-siege-engines="campaign.sieges.map((siege) => siege.engines ?? 0).join(',') || 'none'"
+    :data-campaign-winner="campaign.winnerRealmId ?? 'none'"
+    :aria-label="campaignMode ? 'Стратегическая карта державы, выберите провинцию' : tacticalCommand ? 'Изометрическая карта, укажите точку обороны' : selectedTool ? `Изометрическая карта, выбран инструмент: ${selectedTool}` : 'Изометрическая карта, режим осмотра'"
     @pointerdown="pointerDown"
     @pointermove="pointerMove"
     @pointerup="pointerUp"

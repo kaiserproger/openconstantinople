@@ -1,3 +1,11 @@
+import {
+  advanceCampaign,
+  createCampaign,
+  type CampaignMarchTiming,
+  type CampaignState,
+  type CampaignTurnReport,
+} from './campaign'
+
 export type BuildingKind =
   | 'road'
   | 'house'
@@ -81,6 +89,7 @@ export interface GameState {
   legitimacy: number
   resources: { food: number; wood: number; stone: number; silver: number }
   map: ValleyMap
+  campaign: CampaignState
   buildings: Building[]
   threats: Threat[]
   crises: Crisis[]
@@ -242,6 +251,7 @@ export function createGame(seed: string): GameState {
     legitimacy: 66,
     resources: { food: 2845, wood: 120, stone: 96, silver: 92 },
     map: createMap(seed),
+    campaign: createCampaign(seed),
     buildings: urbanNucleus,
     threats: [],
     crises: [],
@@ -554,10 +564,38 @@ function applyCrisisConsequences(state: GameState): void {
   }
 }
 
-export function advanceGame(state: GameState, days = 1): void {
+export function advanceGame(
+  state: GameState,
+  days = 1,
+  options: { campaignMarchTiming?: CampaignMarchTiming } = {},
+): CampaignTurnReport[] {
+  const reports: CampaignTurnReport[] = []
   for (let index = 0; index < days; index += 1) {
     state.day += 1
     state.tick += 240
+    const campaignReports = advanceCampaign(state.campaign, 1, {
+      marchTiming: options.campaignMarchTiming,
+    })
+    reports.push(...campaignReports)
+    for (const report of campaignReports) {
+      state.events.push({
+        id: state.nextId++,
+        day: state.day,
+        title: report.kind === 'conquest'
+          ? report.targetOwner === state.campaign.playerRealmId ? 'Пограничное поражение' : 'Чужой поход'
+          : report.kind === 'march-started'
+            ? 'Чужая рать выступила'
+            : report.kind === 'march-resolved'
+              ? 'Поход завершён'
+          : report.kind === 'project-completed'
+            ? report.actorId === state.campaign.playerRealmId ? 'Стройка завершена' : 'Чужое владение развито'
+            : 'Срок перемирия истёк',
+        text: report.message,
+        tone: report.kind === 'project-completed' && report.actorId === state.campaign.playerRealmId
+          ? 'good'
+          : report.targetOwner === state.campaign.playerRealmId ? 'danger' : 'warning',
+      })
+    }
 
     const farms = state.buildings.filter((building) => building.kind === 'farm' && building.progress >= 1).length
     const camps = state.buildings.filter((building) => building.kind === 'lumberCamp' && building.progress >= 1).length
@@ -607,4 +645,5 @@ export function advanceGame(state: GameState, days = 1): void {
       if (state.season === 'Весна') state.year += 1
     }
   }
+  return reports
 }

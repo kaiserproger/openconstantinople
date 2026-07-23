@@ -1,6 +1,6 @@
 import type { VoxelModel } from './types'
 
-export type UnitKind = 'militia' | 'retinue' | 'raider'
+export type UnitKind = 'militia' | 'spears' | 'archers' | 'retinue' | 'raider'
 export type UnitFaction = 'friendly' | 'enemy'
 
 export function generateUnitModel(kind: UnitKind, faction: UnitFaction, distant = false): VoxelModel {
@@ -21,11 +21,18 @@ export function generateUnitModel(kind: UnitKind, faction: UnitFaction, distant 
     { x: 0, y: 1.64, z: 0, material: 'marble', scale: [0.42, 0.42, 0.42] },
     { x: 0, y: 1.91, z: 0, material: metal, scale: [0.48, 0.18, 0.48] },
   ]
-  if (kind === 'militia') {
+  if (kind === 'militia' || kind === 'spears') {
     voxels.push(
       { x: -0.46, y: 1.05, z: 0, material: 'timber', scale: [0.14, 0.8, 0.14] },
       { x: 0.46, y: 1.05, z: 0, material: 'marble', scale: [0.18, 0.74, 0.72] },
-      { x: -0.52, y: 1.85, z: 0, material: 'iron', scale: [0.1, 2.4, 0.1] },
+      { x: -0.52, y: kind === 'spears' ? 2.2 : 1.85, z: 0, material: 'iron', scale: [0.1, kind === 'spears' ? 3.4 : 2.4, 0.1] },
+    )
+  } else if (kind === 'archers') {
+    voxels.push(
+      { x: -0.42, y: 1.12, z: 0, material: 'timber', scale: [0.13, 1.1, 0.13] },
+      { x: 0.46, y: 1.18, z: 0, material: 'gold', scale: [0.09, 1.65, 0.09] },
+      { x: 0.62, y: 1.18, z: 0, material: 'gold', scale: [0.09, 1.65, 0.09] },
+      { x: 0.54, y: 1.95, z: 0, material: 'timber', scale: [0.42, 0.09, 0.09] },
     )
   } else if (kind === 'retinue') {
     voxels.push(

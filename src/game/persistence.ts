@@ -1,9 +1,10 @@
 import { getPreset } from '../presets'
 import type { CameraSnapshot } from '../renderer/CameraController'
+import { normalizeCampaign } from './campaign'
 import type { GameState } from './simulation'
 
 interface SaveEnvelope {
-  version: 1 | 2
+  version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
   checksum: string
   payload: string
 }
@@ -31,7 +32,7 @@ function checksum(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-function envelope(version: 1 | 2, value: unknown): string {
+function envelope(version: SaveEnvelope['version'], value: unknown): string {
   const payload = JSON.stringify(value)
   return JSON.stringify({ version, checksum: checksum(payload), payload } satisfies SaveEnvelope)
 }
@@ -52,24 +53,96 @@ function validCamera(value: unknown): value is CameraSnapshot {
 }
 
 export function encodeSave(state: GameState, meta: SaveMeta = DEFAULT_META): string {
-  return envelope(2, { state, meta })
+  return envelope(15, { state, meta })
 }
 
 export function encodeVersionOneFixture(state: GameState): string {
-  return envelope(1, state)
+  const { campaign: _campaign, ...legacy } = state
+  return envelope(1, legacy)
+}
+
+export function encodeVersionThreeFixture(state: GameState, meta: SaveMeta = DEFAULT_META): string {
+  const legacyCampaign = {
+    ...state.campaign,
+    realms: state.campaign.realms.map(({
+      status: _status,
+      defeatedAt: _defeatedAt,
+      defeatedBy: _defeatedBy,
+      ...realm
+    }) => ({ ...realm, ruler: realm.ruler.name })),
+    provinces: state.campaign.provinces.map(({
+      defenseFormation: _defenseFormation,
+      capitalOf: _capitalOf,
+      homelandOf: _homelandOf,
+      homelandCapitalOf: _homelandCapitalOf,
+      ...province
+    }) => province),
+    marches: state.campaign.marches.map(({ formation: _formation, kind: _kind, route: _route, ...march }) => march),
+  } as unknown as Partial<GameState['campaign']>
+  delete legacyCampaign.relations
+  delete legacyCampaign.economies
+  delete legacyCampaign.allianceOffers
+  delete legacyCampaign.peaceOffers
+  delete legacyCampaign.tradeRoutes
+  delete legacyCampaign.sieges
+  delete legacyCampaign.winnerRealmId
+  return envelope(3, { state: { ...state, campaign: legacyCampaign }, meta })
+}
+
+export function encodeVersionSevenFixture(state: GameState, meta: SaveMeta = DEFAULT_META): string {
+  const legacyCampaign = {
+    ...state.campaign,
+    relations: state.campaign.relations.map(({ tradeEmbargoes: _tradeEmbargoes, ...relation }) => relation),
+    provinces: state.campaign.provinces.map(({
+      marketLevel: _marketLevel,
+      fortificationLevel: _fortificationLevel,
+      workshopLevel: _workshopLevel,
+      homelandOf: _homelandOf,
+      homelandCapitalOf: _homelandCapitalOf,
+      project: _project,
+      ...province
+    }) => province),
+  } as Partial<GameState['campaign']>
+  delete legacyCampaign.allianceOffers
+  delete legacyCampaign.peaceOffers
+  delete legacyCampaign.tradeRoutes
+  delete legacyCampaign.sieges
+  return envelope(7, { state: { ...state, campaign: legacyCampaign }, meta })
 }
 
 export function decodeSave(value: string): LoadResult {
   try {
     const saved = JSON.parse(value) as Partial<SaveEnvelope>
-    if (saved.version !== 1 && saved.version !== 2) return { ok: false, reason: 'Версия сохранения не поддерживается' }
+    if (
+      saved.version !== 1
+      && saved.version !== 2
+      && saved.version !== 3
+      && saved.version !== 4
+      && saved.version !== 5
+      && saved.version !== 6
+      && saved.version !== 7
+      && saved.version !== 8
+      && saved.version !== 9
+      && saved.version !== 10
+      && saved.version !== 11
+      && saved.version !== 12
+      && saved.version !== 13
+      && saved.version !== 14
+      && saved.version !== 15
+    ) {
+      return { ok: false, reason: 'Версия сохранения не поддерживается' }
+    }
     if (typeof saved.payload !== 'string' || saved.checksum !== checksum(saved.payload)) {
       return { ok: false, reason: 'Сохранение повреждено' }
     }
     const decoded = JSON.parse(saved.payload) as unknown
     if (saved.version === 1) {
       if (!validState(decoded)) return { ok: false, reason: 'Сохранение повреждено' }
-      return { ok: true, state: decoded, meta: structuredClone(DEFAULT_META) }
+      return {
+        ok: true,
+        state: { ...decoded, campaign: normalizeCampaign(decoded.campaign, decoded.map.seed) },
+        meta: structuredClone(DEFAULT_META),
+      }
     }
 
     const next = decoded as { state?: unknown; meta?: Partial<SaveMeta> }
@@ -81,9 +154,11 @@ export function decodeSave(value: string): LoadResult {
     } catch {
       return { ok: false, reason: 'Неизвестный культурный пресет' }
     }
+    const state = next.state
+    state.campaign = normalizeCampaign(state.campaign, state.map.seed)
     return {
       ok: true,
-      state: next.state,
+      state,
       meta: {
         presetId: next.meta.presetId,
         camera: validCamera(next.meta.camera) ? next.meta.camera : { ...DEFAULT_META.camera },

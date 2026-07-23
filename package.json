@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "server": "tsx server/index.ts",
     "build": "vue-tsc -b && vite build",
     "typecheck": "vue-tsc -b",
     "test": "vitest run",
@@ -15,14 +16,18 @@
     "@lucide/vue": "^1.25.0",
     "pinia": "^4.0.2",
     "three": "^0.185.1",
-    "vue": "^3.5.40"
+    "vue": "^3.5.40",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "@types/node": "^26.1.1",
     "@types/three": "^0.185.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/test-utils": "^2.4.11",
     "happy-dom": "^20.11.0",
+    "tsx": "^4.23.1",
     "typescript": "~5.9.3",
     "vite": "^8.1.5",
     "vitest": "^4.1.10",

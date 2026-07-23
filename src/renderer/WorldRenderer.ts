@@ -1,10 +1,12 @@
 import * as THREE from 'three'
+import { campaignProvinceCenter, type CampaignMarch, type CampaignState, type Province } from '../game/campaign'
 import { canPlaceAt, type Building } from '../game/simulation'
+import { createBattleFormations, type BattleFormation, type FormationKind, type FormationShape } from '../game/tactics'
 import { byzantineMacedonian } from '../presets'
 import { generateBuilding } from '../voxel/buildings'
 import { generateTerrain } from '../voxel/terrain'
 import type { VoxelModel } from '../voxel/types'
-import { generateUnitModel } from '../voxel/units'
+import { generateUnitModel, type UnitKind } from '../voxel/units'
 import { CameraController } from './CameraController'
 import { PickingController } from './PickingController'
 import { SceneMetrics } from './SceneMetrics'
@@ -15,6 +17,12 @@ const BATTLE_PIXEL_RATIO = 1
 const STRESS_BATTLE_PIXEL_RATIO = 0.36
 const MAX_PATH_PREVIEW = 64
 const BATTLE_DURATION_MS = 4600
+
+const REALM_MATERIAL: Record<string, 'porphyry' | 'brick' | 'grass'> = {
+  imperial: 'porphyry',
+  steppe: 'brick',
+  danubian: 'grass',
+}
 
 function terrainModel(seed: string, tactical = false): VoxelModel {
   const terrain = generateTerrain(seed)
@@ -60,6 +68,166 @@ function fireModel(seed: number): VoxelModel {
   }
 }
 
+function campaignModel(campaign: CampaignState): VoxelModel {
+  const voxels: VoxelModel['voxels'] = [
+    { x: 31.5, y: -0.45, z: 31.5, material: 'earth', scale: [66, 0.8, 66] },
+  ]
+  for (const province of campaign.provinces) {
+    const center = campaignProvinceCenter(province)
+    const mapStyle = campaign.realms.find((realm) => realm.id === province.owner)?.mapStyle
+    const material = mapStyle ? REALM_MATERIAL[mapStyle] ?? 'porphyry' : 'earth'
+    const height = 0.9 + province.cityLevel * 0.16 + (province.id % 3) * 0.06
+    const isCapital = province.owner !== null && province.capitalOf === province.owner
+    voxels.push({ x: center.x, y: height / 2, z: center.y, material, scale: [7.55, height, 7.55] })
+    if (province.cityLevel > 0) {
+      voxels.push(
+        { x: center.x, y: height + 0.7, z: center.y, material: 'marble', scale: [1.8, 1.4, 1.8] },
+        { x: center.x, y: height + 1.65, z: center.y, material: 'gold', scale: [2.2, 0.5, 2.2] },
+      )
+    }
+    if (isCapital) {
+      voxels.push(
+        { x: center.x, y: height + 2.25, z: center.y, material: 'marble', scale: [1.05, 3.1, 1.05] },
+        { x: center.x, y: height + 4.05, z: center.y, material: 'gold', scale: [1.65, 0.5, 1.65] },
+        { x: center.x, y: height + 4.65, z: center.y, material: 'gold', scale: [0.36, 1.2, 0.36] },
+      )
+    }
+    if (province.marketLevel > 0) {
+      voxels.push(
+        { x: center.x - 2.05, y: height + 0.42, z: center.y + 1.9, material: 'timber', scale: [1.9, 0.18, 1.5] },
+        { x: center.x - 2.05, y: height + 0.72, z: center.y + 1.9, material: 'gold', scale: [2.1, 0.28, 1.7] },
+      )
+      if (province.marketLevel > 1) {
+        voxels.push(
+          { x: center.x - 2.72, y: height + 0.25, z: center.y + 1.9, material: 'timber', scale: [0.16, 0.72, 0.16] },
+          { x: center.x - 1.38, y: height + 0.25, z: center.y + 1.9, material: 'timber', scale: [0.16, 0.72, 0.16] },
+        )
+      }
+    }
+    if (province.workshopLevel > 0) {
+      voxels.push(
+        { x: center.x + 2.05, y: height + 0.22, z: center.y + 1.9, material: 'timber', scale: [2.2, 0.24, 1.55] },
+        { x: center.x + 2.05, y: height + 0.78, z: center.y + 1.9, material: 'iron', scale: [0.24, 1.25, 0.24] },
+        { x: center.x + 2.05, y: height + 1.32, z: center.y + 1.9, material: 'timber', scale: [1.85, 0.2, 0.2] },
+      )
+      if (province.workshopLevel > 1) {
+        voxels.push(
+          { x: center.x + 1.35, y: height + 0.62, z: center.y + 1.9, material: 'iron', scale: [0.45, 0.45, 0.45] },
+          { x: center.x + 2.75, y: height + 0.62, z: center.y + 1.9, material: 'iron', scale: [0.45, 0.45, 0.45] },
+        )
+      }
+    }
+    if (province.fortificationLevel > 0) {
+      const wallHeight = 0.42 + province.fortificationLevel * 0.24
+      for (const [offsetX, offsetZ] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) {
+        voxels.push({
+          x: center.x + offsetX,
+          y: height + wallHeight / 2,
+          z: center.y + offsetZ,
+          material: 'marble',
+          scale: [0.58, wallHeight, 0.58],
+        })
+      }
+    }
+    if (province.project) {
+      voxels.push(
+        { x: center.x - 1.25, y: height + 0.75, z: center.y - 1.25, material: 'timber', scale: [0.18, 1.5, 0.18] },
+        { x: center.x + 1.25, y: height + 0.75, z: center.y - 1.25, material: 'timber', scale: [0.18, 1.5, 0.18] },
+        { x: center.x, y: height + 1.35, z: center.y - 1.25, material: 'timber', scale: [2.7, 0.16, 0.16] },
+      )
+    }
+    const levyHeight = Math.min(3.2, 0.35 + province.levies / 45)
+    voxels.push({ x: center.x + 2.3, y: height + levyHeight / 2, z: center.y - 2.3, material: province.owner ? material : 'iron', scale: [0.35, levyHeight, 0.35] })
+  }
+  for (const route of campaign.tradeRoutes) {
+    const source = campaign.provinces.find((province) => province.id === route.provinceIds[0])
+    const target = campaign.provinces.find((province) => province.id === route.provinceIds[1])
+    if (!source || !target) continue
+    const start = campaignProvinceCenter(source)
+    const end = campaignProvinceCenter(target)
+    for (let step = 1; step <= 5; step += 1) {
+      const progress = step / 6
+      const x = THREE.MathUtils.lerp(start.x, end.x, progress)
+      const z = THREE.MathUtils.lerp(start.y, end.y, progress)
+      voxels.push(
+        { x, y: 1.23, z, material: 'timber', scale: [0.72, 0.18, 0.72] },
+        { x, y: 1.42, z, material: 'gold', scale: [0.38, 0.2, 0.38] },
+      )
+    }
+  }
+  for (const march of campaign.marches) {
+    for (let index = 1; index < march.route.length; index += 1) {
+      const source = campaign.provinces.find((province) => province.id === march.route[index - 1])
+      const target = campaign.provinces.find((province) => province.id === march.route[index])
+      if (!source || !target) continue
+      const start = campaignProvinceCenter(source)
+      const end = campaignProvinceCenter(target)
+      const width = Math.max(0.24, Math.abs(end.x - start.x))
+      const depth = Math.max(0.24, Math.abs(end.y - start.y))
+      voxels.push(
+        {
+          x: (start.x + end.x) / 2,
+          y: 1.34,
+          z: (start.y + end.y) / 2,
+          material: 'iron',
+          scale: [width, 0.12, depth],
+        },
+        {
+          x: (start.x + end.x) / 2,
+          y: 1.43,
+          z: (start.y + end.y) / 2,
+          material: 'gold',
+          scale: [Math.max(0.12, width - 0.08), 0.08, Math.max(0.12, depth - 0.08)],
+        },
+      )
+    }
+    for (const provinceId of march.route.slice(1, -1)) {
+      const province = campaign.provinces.find((candidate) => candidate.id === provinceId)
+      if (!province) continue
+      const center = campaignProvinceCenter(province)
+      voxels.push(
+        { x: center.x, y: 1.56, z: center.y, material: 'iron', scale: [0.9, 0.18, 0.9] },
+        { x: center.x, y: 1.72, z: center.y, material: 'gold', scale: [0.58, 0.14, 0.58] },
+      )
+    }
+  }
+  for (const siege of campaign.sieges) {
+    const target = campaign.provinces.find((province) => province.id === siege.targetId)
+    if (!target) continue
+    const center = campaignProvinceCenter(target)
+    const mapStyle = campaign.realms.find((realm) => realm.id === siege.attackerId)?.mapStyle
+    const bannerMaterial = mapStyle ? REALM_MATERIAL[mapStyle] ?? 'porphyry' : 'porphyry'
+    for (const [offsetX, offsetZ, turn] of [
+      [-3.25, -0.9, 1],
+      [3.25, 0.9, -1],
+      [-0.9, 3.25, -1],
+      [0.9, -3.25, 1],
+    ] as const) {
+      voxels.push(
+        { x: center.x + offsetX, y: 1.02, z: center.y + offsetZ, material: 'timber', scale: [1.25, 0.22, 1.05] },
+        { x: center.x + offsetX, y: 1.48, z: center.y + offsetZ, material: 'roof', scale: [1.05, 0.72, 0.85] },
+        { x: center.x + offsetX + turn * 0.7, y: 1.45, z: center.y + offsetZ, material: bannerMaterial, scale: [0.16, 1.45, 0.16] },
+      )
+    }
+    const progressHeight = 0.45 + siege.progress / 38
+    voxels.push(
+      { x: center.x + 2.55, y: 1.02, z: center.y - 2.55, material: 'fire', scale: [0.42, 0.78, 0.42] },
+      { x: center.x + 2.55, y: 1.72, z: center.y - 2.55, material: 'gold', scale: [0.24, 0.52, 0.24] },
+      { x: center.x - 2.55, y: progressHeight / 2 + 0.62, z: center.y + 2.55, material: 'gold', scale: [0.3, progressHeight, 0.3] },
+    )
+    for (let engine = 0; engine < (siege.engines ?? 0); engine += 1) {
+      const engineX = center.x + (engine === 0 ? 1.35 : -1.35)
+      voxels.push(
+        { x: engineX, y: 1.02, z: center.y + 3.05, material: 'timber', scale: [1.45, 0.28, 0.55] },
+        { x: engineX, y: 1.34, z: center.y + 3.05, material: 'iron', scale: [0.26, 0.72, 0.26] },
+        { x: engineX - 0.45, y: 0.82, z: center.y + 3.05, material: 'iron', scale: [0.34, 0.34, 0.72] },
+        { x: engineX + 0.45, y: 0.82, z: center.y + 3.05, material: 'iron', scale: [0.34, 0.34, 0.72] },
+      )
+    }
+  }
+  return { id: `campaign:${campaign.tick}`, footprint: [64, 64], anchor: [32, 0, 32], voxels }
+}
+
 function tacticalBuildingModel(kind: Building['kind'], source: VoxelModel): VoxelModel {
   const [width, depth] = source.footprint
   const x = (width - 1) / 2
@@ -94,7 +262,7 @@ function tacticalBuildingModel(kind: Building['kind'], source: VoxelModel): Voxe
 
 export interface BattleRenderUnit {
   id: number
-  kind: 'militia' | 'retinue' | 'raider'
+  kind: UnitKind
   faction: 'friendly' | 'enemy'
   x: number
   z: number
@@ -112,7 +280,9 @@ export class WorldRenderer {
   private readonly metrics: SceneMetrics
   private worldMeshes: THREE.InstancedMesh[] = []
   private battleMeshes: THREE.InstancedMesh[] = []
-  private friendlyFormation: THREE.Group | null = null
+  private campaignMarchMeshes: THREE.InstancedMesh[] = []
+  private readonly campaignMarchGroups = new Map<string, THREE.Group>()
+  private readonly friendlyFormations = new Map<FormationKind, THREE.Group>()
   private enemyFormation: THREE.Group | null = null
   private readonly preview: THREE.Mesh
   private readonly pathPreview: THREE.InstancedMesh
@@ -120,16 +290,27 @@ export class WorldRenderer {
   private readonly pickerGeometry = new THREE.BoxGeometry(1, 1, 1)
   private readonly pickerMaterial = new THREE.MeshBasicMaterial({ visible: false })
   private readonly selectionOutline: THREE.LineSegments
+  private readonly campaignSourceOutline: THREE.LineSegments
+  private readonly campaignTargetOutline: THREE.LineSegments
+  private readonly campaignEventOutline: THREE.LineSegments
   private buildingPickers: THREE.Mesh[] = []
   private selectedBuildingId: number | null = null
+  private campaignSourceProvinceId: number | null = null
+  private campaignTargetProvinceId: number | null = null
+  private campaignEventProvinceId: number | null = null
   private animationFrame = 0
   private needsRender = true
   private seed = ''
   private buildings: Building[] = []
+  private campaignMode = false
+  private campaign: CampaignState | null = null
+  private campaignSignature = ''
   private battleVisible = false
   private battleOutcome: 'victory' | 'defeat' | null = null
   private battleStartedAt = 0
-  private battleCommandPoint: { x: number; y: number } | null = null
+  private battleFormations: BattleFormation[] = createBattleFormations()
+  private selectedFormationId: FormationKind = 'militia'
+  private battleExecuting = false
   private burningBuildingIds: number[] = []
   private stressMode = false
   private visibleUnits = 0
@@ -194,6 +375,26 @@ export class WorldRenderer {
     this.selectionOutline.visible = false
     this.selectionOutline.renderOrder = 30
     this.scene.add(this.selectionOutline)
+    const campaignOutlineSource = new THREE.BoxGeometry(1, 1, 1)
+    const campaignOutlineGeometry = new THREE.EdgesGeometry(campaignOutlineSource)
+    campaignOutlineSource.dispose()
+    this.campaignSourceOutline = new THREE.LineSegments(
+      campaignOutlineGeometry,
+      new THREE.LineBasicMaterial({ color: 0xf2c65d, depthTest: false, transparent: true, opacity: 0.95 }),
+    )
+    this.campaignTargetOutline = new THREE.LineSegments(
+      campaignOutlineGeometry.clone(),
+      new THREE.LineBasicMaterial({ color: 0xff8b76, depthTest: false, transparent: true, opacity: 0.98 }),
+    )
+    this.campaignEventOutline = new THREE.LineSegments(
+      campaignOutlineGeometry.clone(),
+      new THREE.LineBasicMaterial({ color: 0xffef9a, depthTest: false, transparent: true, opacity: 1 }),
+    )
+    for (const outline of [this.campaignSourceOutline, this.campaignTargetOutline, this.campaignEventOutline]) {
+      outline.visible = false
+      outline.renderOrder = outline === this.campaignEventOutline ? 32 : 31
+      this.scene.add(outline)
+    }
     this.resize()
     this.animate()
   }
@@ -201,6 +402,8 @@ export class WorldRenderer {
   setWorld(
     seed: string,
     buildings: Building[],
+    campaignMode: boolean,
+    campaign: CampaignState,
     battleVisible: boolean,
     stressMode: boolean,
     battleOutcome: 'victory' | 'defeat' | null,
@@ -212,17 +415,57 @@ export class WorldRenderer {
         return building.id !== next?.id || building.health !== next.health || building.progress !== next.progress
       })
     const firesChanged = this.burningBuildingIds.join(',') !== burningBuildingIds.join(',')
-    if (this.seed === seed && !buildingsChanged && this.battleVisible === battleVisible && this.stressMode === stressMode
-      && this.battleOutcome === battleOutcome && !firesChanged) return
+    const campaignSignature = [
+      campaign.winnerRealmId ?? 'active',
+      campaign.realms.map((realm) => `${realm.id}:${realm.status}`).join('|'),
+      campaign.provinces.map((province) => (
+        `${province.id}:${province.owner ?? 'free'}:${province.levies}:${province.cityLevel}:${province.marketLevel}`
+        + `:${province.fortificationLevel}:${province.workshopLevel}:${province.project?.kind ?? 'idle'}:${province.defenseFormation}:${province.capitalOf ?? 'none'}`
+      )).join('|'),
+      campaign.marches.map((march) => (
+        `${march.id}:${march.kind}:${march.siegeId ?? 'field'}:${march.route.join('-')}:${march.soldiers}:${march.formation}:${march.supplies ?? 0}:${march.engines ?? 0}:${march.departedAt}:${march.arrivesAt}`
+      )).join('|'),
+      campaign.relations.map((relation) => (
+        `${relation.realmIds.join('-')}:${relation.status}:${relation.tradeEmbargoes.join(',')}`
+      )).join('|'),
+      campaign.tradeRoutes.map((route) => `${route.id}:${route.provinceIds.join('-')}`).join('|'),
+      campaign.sieges.map((siege) => (
+        `${siege.id}:${siege.targetId}:${siege.soldiers}:${siege.formation}:${siege.tactic}:${siege.progress}:${siege.supplies ?? 0}:${siege.engines ?? 0}`
+      )).join('|'),
+    ].join('::')
+    const campaignChanged = campaignSignature !== this.campaignSignature
+    if (this.seed === seed && !buildingsChanged && this.campaignMode === campaignMode && !campaignChanged
+      && this.battleVisible === battleVisible && this.stressMode === stressMode && this.battleOutcome === battleOutcome && !firesChanged) return
     const battleVisibilityChanged = battleVisible !== this.battleVisible
-    const battleStarted = battleVisible && !this.battleVisible
     this.seed = seed
     this.buildings = buildings.map((building) => ({ ...building }))
+    this.campaignMode = campaignMode
+    this.campaign = {
+      ...campaign,
+      realms: campaign.realms.map((realm) => ({ ...realm, ruler: { ...realm.ruler } })),
+      economies: campaign.economies.map((economy) => ({ ...economy })),
+      relations: campaign.relations.map((relation) => ({
+        ...relation,
+        tradeEmbargoes: [...relation.tradeEmbargoes],
+      })),
+      allianceOffers: campaign.allianceOffers.map((offer) => ({ ...offer })),
+      tradeRoutes: campaign.tradeRoutes.map((route) => ({
+        ...route,
+        realmIds: [route.realmIds[0], route.realmIds[1]],
+        provinceIds: [route.provinceIds[0], route.provinceIds[1]],
+      })),
+      sieges: campaign.sieges.map((siege) => ({ ...siege })),
+      provinces: campaign.provinces.map((province) => ({
+        ...province,
+        project: province.project ? { ...province.project } : null,
+      })),
+      marches: campaign.marches.map((march) => ({ ...march, route: [...march.route] })),
+    }
+    this.campaignSignature = campaignSignature
     this.battleVisible = battleVisible
     this.stressMode = stressMode
     this.battleOutcome = battleOutcome
     this.burningBuildingIds = [...burningBuildingIds]
-    if (battleStarted) this.battleStartedAt = performance.now()
     if (battleVisibilityChanged) this.resize()
     this.rebuild()
     this.invalidate()
@@ -266,10 +509,44 @@ export class WorldRenderer {
     this.invalidate()
   }
 
-  commandBattle(point: { x: number; y: number } | null): void {
-    this.battleCommandPoint = point ? { ...point } : null
-    this.commandMarker.visible = Boolean(point) && this.battleVisible
-    if (point) this.commandMarker.position.set(point.x, 2.05, point.y)
+  setCampaignSelection(source: Province | null, target: Province | null, eventProvince: Province | null): void {
+    this.campaignSourceProvinceId = source?.id ?? null
+    this.campaignTargetProvinceId = target?.id ?? null
+    this.campaignEventProvinceId = eventProvince?.id ?? null
+    this.selectionOutline.visible = false
+    for (const [outline, province] of [
+      [this.campaignSourceOutline, source],
+      [this.campaignTargetOutline, target],
+      [this.campaignEventOutline, eventProvince],
+    ] as const) {
+      outline.visible = this.campaignMode && Boolean(province)
+      if (!this.campaignMode || !province) continue
+      const center = campaignProvinceCenter(province)
+      const isEvent = outline === this.campaignEventOutline
+      outline.position.set(center.x, isEvent ? 0.95 : 0.75, center.y)
+      outline.scale.set(isEvent ? 8.05 : 7.7, isEvent ? 1.75 : 1.35, isEvent ? 8.05 : 7.7)
+      outline.updateMatrixWorld()
+    }
+    this.invalidate()
+  }
+
+  setBattlePlan(formations: readonly BattleFormation[], selectedFormationId: FormationKind, executing: boolean): void {
+    const previousShapeSignature = this.battleFormations.map((formation) => `${formation.id}:${formation.shape}`).join('|')
+    const nextShapeSignature = formations.map((formation) => `${formation.id}:${formation.shape}`).join('|')
+    const executionStarted = executing && !this.battleExecuting
+    this.battleFormations = formations.map((formation) => ({
+      ...formation,
+      start: { ...formation.start },
+      target: formation.target ? { ...formation.target } : null,
+    }))
+    this.selectedFormationId = selectedFormationId
+    this.battleExecuting = executing
+    if (executionStarted) this.battleStartedAt = performance.now()
+    const selected = this.battleFormations.find((formation) => formation.id === selectedFormationId)
+    this.commandMarker.visible = Boolean(selected?.target) && this.battleVisible && !executing
+    if (selected?.target) this.commandMarker.position.set(selected.target.x, 2.05, selected.target.y)
+    if (previousShapeSignature !== nextShapeSignature && this.battleVisible) this.rebuild()
+    else if (this.battleVisible) this.updateBattle(performance.now())
     this.invalidate()
   }
 
@@ -367,12 +644,29 @@ export class WorldRenderer {
     this.pickerMaterial.dispose()
     this.selectionOutline.geometry.dispose()
     ;(this.selectionOutline.material as THREE.Material).dispose()
+    this.campaignSourceOutline.geometry.dispose()
+    ;(this.campaignSourceOutline.material as THREE.Material).dispose()
+    this.campaignTargetOutline.geometry.dispose()
+    ;(this.campaignTargetOutline.material as THREE.Material).dispose()
+    this.campaignEventOutline.geometry.dispose()
+    ;(this.campaignEventOutline.material as THREE.Material).dispose()
     this.renderer.dispose()
   }
 
   private rebuild(): void {
     this.disposeWorld()
     const batch = new VoxelBatch()
+    if (this.campaignMode && this.campaign) {
+      batch.add(campaignModel(this.campaign))
+      this.worldMeshes = batch.commit(this.scene)
+      this.rebuildCampaignMarches(this.campaign.marches)
+      this.visibleUnits = this.campaign.marches.length * 6
+      const source = this.campaign.provinces.find((province) => province.id === this.campaignSourceProvinceId) ?? null
+      const target = this.campaign.provinces.find((province) => province.id === this.campaignTargetProvinceId) ?? null
+      const eventProvince = this.campaign.provinces.find((province) => province.id === this.campaignEventProvinceId) ?? null
+      this.setCampaignSelection(source, target, eventProvince)
+      return
+    }
     batch.add(terrainModel(this.seed, this.battleVisible && this.stressMode))
     for (const building of this.buildings) {
       const detailedModel = generateBuilding(building.kind, `${this.seed}:${building.id}`, byzantineMacedonian)
@@ -399,51 +693,165 @@ export class WorldRenderer {
   }
 
   private rebuildBattle(): void {
-    const count = this.stressMode ? 150 : 24
-    const columns = this.stressMode ? 15 : 6
-    const spacing = this.stressMode ? 0.7 : 1.05
-    const rows = Math.ceil(count / columns)
-    const friendlyBatch = new VoxelBatch()
+    const enemyCount = this.stressMode ? 150 : 60
     const enemyBatch = new VoxelBatch()
-    for (let index = 0; index < count; index += 1) {
-      const column = index % columns
-      const row = Math.floor(index / columns)
-      const origin = new THREE.Vector3(column * spacing, 0, (row - (rows - 1) / 2) * spacing)
-      friendlyBatch.add(generateUnitModel(index % 5 === 0 ? 'retinue' : 'militia', 'friendly', this.stressMode), origin)
+    const enemyColumns = this.stressMode ? 15 : 10
+    const enemySpacing = this.stressMode ? 0.7 : 0.82
+    const enemyRows = Math.ceil(enemyCount / enemyColumns)
+    for (let index = 0; index < enemyCount; index += 1) {
+      const column = index % enemyColumns
+      const row = Math.floor(index / enemyColumns)
+      const origin = new THREE.Vector3(column * enemySpacing, 0, (row - (enemyRows - 1) / 2) * enemySpacing)
       enemyBatch.add(generateUnitModel('raider', 'enemy', this.stressMode), origin)
     }
-    this.friendlyFormation = new THREE.Group()
     this.enemyFormation = new THREE.Group()
-    this.battleMeshes = [
-      ...friendlyBatch.commitBattle(this.friendlyFormation, 'porphyry'),
-      ...enemyBatch.commitBattle(this.enemyFormation, 'fire'),
-    ]
-    this.scene.add(this.friendlyFormation, this.enemyFormation)
-    this.visibleUnits = count * 2
+    this.battleMeshes = [...enemyBatch.commitBattle(this.enemyFormation, 'fire')]
+    this.scene.add(this.enemyFormation)
+
+    if (this.stressMode) {
+      const group = new THREE.Group()
+      const batch = new VoxelBatch()
+      for (let index = 0; index < 150; index += 1) {
+        const column = index % 15
+        const row = Math.floor(index / 15)
+        batch.add(generateUnitModel(index % 5 === 0 ? 'retinue' : 'militia', 'friendly', true), new THREE.Vector3(column * 0.7, 0, (row - 4.5) * 0.7))
+      }
+      this.friendlyFormations.set('militia', group)
+      this.battleMeshes.push(...batch.commitBattle(group, 'porphyry'))
+      this.scene.add(group)
+      this.visibleUnits = 300
+    } else {
+      let friendlyCount = 0
+      for (const formation of this.battleFormations) {
+        const group = new THREE.Group()
+        const batch = new VoxelBatch()
+        for (let index = 0; index < formation.soldiers; index += 1) {
+          batch.add(
+            generateUnitModel(formation.kind, 'friendly'),
+            this.formationOffset(index, formation.soldiers, formation.shape),
+          )
+        }
+        this.friendlyFormations.set(formation.id, group)
+        this.battleMeshes.push(...batch.commitBattle(group, 'porphyry'))
+        this.scene.add(group)
+        friendlyCount += formation.soldiers
+      }
+      this.visibleUnits = friendlyCount + enemyCount
+    }
     this.updateBattle(performance.now())
   }
 
+  private rebuildCampaignMarches(marches: readonly CampaignMarch[]): void {
+    for (const march of marches) {
+      const group = new THREE.Group()
+      const batch = new VoxelBatch()
+      for (let index = 0; index < 6; index += 1) {
+        batch.add(
+          generateUnitModel(index >= 3 ? 'spears' : 'militia', 'friendly'),
+          this.campaignFormationOffset(index, march.formation),
+        )
+      }
+      const mapStyle = this.campaign?.realms.find((realm) => realm.id === march.actorId)?.mapStyle
+      const tint = mapStyle ? REALM_MATERIAL[mapStyle] ?? 'porphyry' : 'porphyry'
+      this.campaignMarchMeshes.push(...batch.commitBattle(group, tint))
+      group.scale.setScalar(1.02)
+      this.campaignMarchGroups.set(march.id, group)
+      this.scene.add(group)
+    }
+    this.updateCampaignMarches(Date.now())
+  }
+
+  private updateCampaignMarches(now: number): void {
+    if (!this.campaignMode || !this.campaign) return
+    for (const march of this.campaign.marches) {
+      const group = this.campaignMarchGroups.get(march.id)
+      const route = march.route
+        .map((provinceId) => this.campaign!.provinces.find((province) => province.id === provinceId))
+        .filter((province): province is Province => Boolean(province))
+      if (!group || route.length < 2) continue
+      const duration = Math.max(1, march.arrivesAt - march.departedAt)
+      const progress = THREE.MathUtils.clamp((now - march.departedAt) / duration, 0, 1)
+      const legProgress = Math.min(route.length - 1, progress * (route.length - 1))
+      const legIndex = Math.min(route.length - 2, Math.floor(legProgress))
+      const start = campaignProvinceCenter(route[legIndex])
+      const end = campaignProvinceCenter(route[legIndex + 1])
+      const eased = THREE.MathUtils.smoothstep(legProgress - legIndex, 0, 1)
+      group.position.set(
+        THREE.MathUtils.lerp(start.x, end.x, eased),
+        2.05 + Math.abs(Math.sin(legProgress * Math.PI * 2)) * 0.22,
+        THREE.MathUtils.lerp(start.y, end.y, eased),
+      )
+      group.rotation.y = Math.atan2(end.x - start.x, end.y - start.y)
+    }
+  }
+
+  private formationOffset(index: number, count: number, shape: FormationShape): THREE.Vector3 {
+    const spacing = 0.72
+    if (shape === 'wedge') {
+      const row = Math.floor(Math.sqrt(index))
+      const rowStart = row * row
+      const position = index - rowStart
+      return new THREE.Vector3(row * spacing, 0, (position - row) * spacing)
+    }
+    const rows = shape === 'line' ? 2 : Math.max(2, Math.ceil(count / 7))
+    const columns = Math.ceil(count / rows)
+    const column = index % columns
+    const row = Math.floor(index / columns)
+    const depthSpacing = shape === 'shieldwall' ? 0.5 : spacing
+    return new THREE.Vector3((column - (columns - 1) / 2) * spacing, 0, (row - (rows - 1) / 2) * depthSpacing)
+  }
+
+  private campaignFormationOffset(index: number, shape: FormationShape): THREE.Vector3 {
+    if (shape === 'wedge') {
+      return [
+        new THREE.Vector3(0, 0, -1.3),
+        new THREE.Vector3(-0.62, 0, -0.22),
+        new THREE.Vector3(0.62, 0, -0.22),
+        new THREE.Vector3(-1.22, 0, 0.88),
+        new THREE.Vector3(0, 0, 0.88),
+        new THREE.Vector3(1.22, 0, 0.88),
+      ][index]!
+    }
+    const spacing = shape === 'shieldwall' ? 0.42 : 0.62
+    return new THREE.Vector3((index - 2.5) * spacing, 0, 0)
+  }
+
   private updateBattle(now: number): void {
-    if (!this.battleVisible || !this.friendlyFormation || !this.enemyFormation) return
+    if (!this.battleVisible || !this.enemyFormation || this.friendlyFormations.size === 0) return
+    if (!this.battleExecuting) {
+      if (this.stressMode) {
+        this.friendlyFormations.get('militia')?.position.set(20, 1.5, 36)
+      } else {
+        for (const formation of this.battleFormations) {
+          const point = formation.target ?? formation.start
+          this.friendlyFormations.get(formation.id)?.position.set(point.x, 1.5, point.y)
+        }
+      }
+      this.enemyFormation.position.set(48, 1.5, 36)
+      return
+    }
     const duration = this.stressMode ? 7600 : BATTLE_DURATION_MS
     const progress = THREE.MathUtils.clamp((now - this.battleStartedAt) / duration, 0, 1)
     const approach = THREE.MathUtils.smoothstep(progress, 0, 0.5)
     const aftermath = this.battleOutcome ? THREE.MathUtils.smoothstep(progress, 0.68, 1) : 0
     const clash = progress > 0.42 && progress < 0.72 ? Math.sin(progress * 95) * 0.16 : 0
 
-    const targetX = this.battleCommandPoint ? this.battleCommandPoint.x - 2.5 : 33
-    const targetZ = this.battleCommandPoint?.y ?? 36
-    this.friendlyFormation.position.set(
-      THREE.MathUtils.lerp(20, targetX, approach) + aftermath * 2,
-      1.5 + Math.abs(clash),
-      THREE.MathUtils.lerp(36, targetZ, approach),
-    )
+    if (this.stressMode) {
+      this.friendlyFormations.get('militia')?.position.set(20 + approach * 13 + aftermath * 2, 1.5 + Math.abs(clash), 36)
+    } else {
+      for (const formation of this.battleFormations) {
+        const point = formation.target ?? formation.start
+        const advance = formation.kind === 'archers' ? 1.5 : formation.kind === 'retinue' ? 7 : 4
+        const defeatedRetreat = this.battleOutcome === 'defeat' ? -aftermath * 8 : aftermath * 1.5
+        this.friendlyFormations.get(formation.id)?.position.set(
+          point.x + approach * advance + defeatedRetreat,
+          1.5 + Math.abs(clash),
+          point.y,
+        )
+      }
+    }
     const enemyRetreatX = this.battleOutcome === 'victory' ? 13 : -10
     this.enemyFormation.position.set(48 - approach * 12 + aftermath * enemyRetreatX, 1.5 + Math.abs(clash), 36)
-    if (this.commandMarker.visible) {
-      const pulse = 1 + Math.sin(now * 0.009) * 0.12
-      this.commandMarker.scale.setScalar(pulse)
-    }
     if (progress < 1) this.needsRender = true
   }
 
@@ -455,7 +863,7 @@ export class WorldRenderer {
       materials.forEach((material) => material.dispose())
     }
     this.worldMeshes = []
-    if (this.friendlyFormation) this.scene.remove(this.friendlyFormation)
+    for (const formation of this.friendlyFormations.values()) this.scene.remove(formation)
     if (this.enemyFormation) this.scene.remove(this.enemyFormation)
     for (const mesh of this.battleMeshes) {
       mesh.geometry.dispose()
@@ -463,7 +871,15 @@ export class WorldRenderer {
       materials.forEach((material) => material.dispose())
     }
     this.battleMeshes = []
-    this.friendlyFormation = null
+    for (const group of this.campaignMarchGroups.values()) this.scene.remove(group)
+    for (const mesh of this.campaignMarchMeshes) {
+      mesh.geometry.dispose()
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+      materials.forEach((material) => material.dispose())
+    }
+    this.campaignMarchMeshes = []
+    this.campaignMarchGroups.clear()
+    this.friendlyFormations.clear()
     this.enemyFormation = null
     for (const picker of this.buildingPickers) this.scene.remove(picker)
     this.buildingPickers = []
@@ -480,6 +896,10 @@ export class WorldRenderer {
   private animate = (): void => {
     this.animationFrame = requestAnimationFrame(this.animate)
     if (this.battleVisible) this.updateBattle(performance.now())
+    if (this.campaignMode && this.campaign?.marches.length) {
+      this.updateCampaignMarches(Date.now())
+      this.needsRender = true
+    }
     if (this.needsRender && !this.paused) {
       this.renderer.render(this.scene, this.camera)
       this.needsRender = false
